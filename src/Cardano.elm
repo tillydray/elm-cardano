@@ -7,7 +7,7 @@ module Cardano exposing
     , finalize, finalizeAdvanced, TxFinalizationError(..)
     , GovernanceState, emptyGovernanceState
     , updateLocalState
-    , dummyBytes
+    , dummyBytes, dummyBytesWithPrefix, prettyBytes
     )
 
 {-| Cardano stuff
@@ -369,7 +369,7 @@ We can embed it directly in the transaction witness.
 @docs finalize, finalizeAdvanced, TxFinalizationError
 @docs GovernanceState, emptyGovernanceState
 @docs updateLocalState
-@docs dummyBytes
+@docs dummyBytes, dummyBytesWithPrefix, prettyBytes
 
 -}
 
@@ -2315,13 +2315,24 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
             )
                 |> List.map
                     (\cred ->
+                        -- Try keeping the 28 bytes of the credential hash at the start if it’s an actual cred
+                        -- or prefix with VKEY and SIGNATURE for fake creds in textual shape (used in tests).
                         let
-                            credAsText =
-                                Bytes.toText cred
-                                    |> Maybe.withDefault (Bytes.toHex cred)
-                                    |> String.left 28
+                            credStr =
+                                prettyBytes cred
+
+                            ( vkey, signature ) =
+                                if credStr == Bytes.toHex cred then
+                                    ( dummyBytesWithPrefix 32 cred
+                                    , dummyBytesWithPrefix 64 cred
+                                    )
+
+                                else
+                                    ( dummyBytes 32 <| "VKEY" ++ credStr
+                                    , dummyBytes 64 <| "SIGNATURE" ++ credStr
+                                    )
                         in
-                        ( cred, { vkey = dummyBytes 32 ("VKEY" ++ credAsText), signature = dummyBytes 64 ("SIGNATURE" ++ credAsText) } )
+                        ( cred, { vkey = vkey, signature = signature } )
                     )
                 -- Convert to a BytesMap to ensure credentials unicity
                 |> Map.fromList
@@ -2531,16 +2542,54 @@ updateLocalState txId tx oldState =
     }
 
 
-{-| Unsafe helper function to make up some bytes of a given length,
+{-| Helper function to make up some bytes of a given length,
 starting by the given text when decoded as text.
 -}
 dummyBytes : Int -> String -> Bytes a
 dummyBytes length prefix =
     let
         zeroSuffix =
-            String.repeat (length - String.length prefix) "0"
+            String.repeat (2 * length) "0"
     in
     Bytes.fromText (prefix ++ zeroSuffix)
+        |> Bytes.toHex
+        |> String.slice 0 (2 * length)
+        |> Bytes.fromHexUnchecked
+
+
+{-| Helper function to make up some bytes of a given length,
+starting with the provided bytes.
+-}
+dummyBytesWithPrefix : Int -> Bytes a -> Bytes b
+dummyBytesWithPrefix length bytesPrefix =
+    let
+        zeroSuffix =
+            String.repeat (2 * length) "0"
+    in
+    (Bytes.toHex bytesPrefix ++ zeroSuffix)
+        |> String.slice 0 (2 * length)
+        |> Bytes.fromHexUnchecked
+
+
+{-| Helper function that convert bytes to either Text if it looks like text,
+or its Hex representation otherwise.
+-}
+prettyBytes : Bytes a -> String
+prettyBytes b =
+    case Bytes.toText b of
+        Nothing ->
+            Bytes.toHex b
+
+        Just text ->
+            let
+                isLikelyAscii char =
+                    Char.toCode char < 128
+            in
+            if String.all isLikelyAscii text then
+                text
+
+            else
+                Bytes.toHex b
 
 
 witnessSourceToResult : WitnessSource a -> Result a OutputReference

@@ -14,7 +14,7 @@ module Cardano.TxExamples exposing
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalize, finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalize, finalizeAdvanced, prettyBytes)
 import Cardano.Address as Address exposing (Address(..), Credential(..), CredentialHash, NetworkId(..), StakeAddress, StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection
 import Cardano.Data as Data
@@ -482,23 +482,6 @@ prettyCred cred =
             "script:" ++ prettyBytes b
 
 
-prettyBytes b =
-    case Bytes.toText b of
-        Nothing ->
-            Bytes.toHex b
-
-        Just text ->
-            let
-                isLikelyAscii char =
-                    Char.toCode char < 128
-            in
-            if String.all isLikelyAscii text then
-                text
-
-            else
-                Bytes.toHex b
-
-
 prettyWithdrawal : ( StakeAddress, Natural ) -> String
 prettyWithdrawal ( { stakeCredential }, amount ) =
     "₳ " ++ Natural.toString amount ++ " @ stakeCred:" ++ prettyCred stakeCredential
@@ -580,15 +563,24 @@ prettyVote ( voter, votes ) =
                     "Pool: " ++ prettyBytes poolId
 
         voteStr ( actionId, procedure ) =
+            let
+                prettyRationale =
+                    case procedure.anchor of
+                        Just { url } ->
+                            " | with rationale: " ++ url
+
+                        Nothing ->
+                            ""
+            in
             case procedure.vote of
                 VoteNo ->
-                    "vote NO for: " ++ prettyActionId actionId
+                    "vote NO for: " ++ prettyActionId actionId ++ prettyRationale
 
                 VoteYes ->
-                    "vote YES for: " ++ prettyActionId actionId
+                    "vote YES for: " ++ prettyActionId actionId ++ prettyRationale
 
                 VoteAbstain ->
-                    "vote ABSTAIN for: " ++ prettyActionId actionId
+                    "vote ABSTAIN for: " ++ prettyActionId actionId ++ prettyRationale
     in
     voterStr :: List.map (indent 3 << voteStr) votes
 

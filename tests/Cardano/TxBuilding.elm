@@ -3,7 +3,7 @@ module Cardano.TxBuilding exposing (suite)
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection exposing (Error(..))
 import Cardano.Data as Data
@@ -1029,18 +1029,6 @@ autoFee =
 
 
 -- Helper functions
-
-
-{-| Unsafe helper function to make up some bytes of a given length,
-starting by the given text when decoded as text.
--}
-dummyBytes : Int -> String -> Bytes a
-dummyBytes length prefix =
-    let
-        zeroSuffix =
-            String.repeat (length - String.length prefix) "0"
-    in
-    Bytes.fromText (prefix ++ zeroSuffix)
 
 
 dummyCredentialHash : String -> Bytes CredentialHash

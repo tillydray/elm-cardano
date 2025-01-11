@@ -3,7 +3,7 @@ module Cardano.Address exposing
     , Credential(..), StakeCredential(..), StakeCredentialPointer, CredentialHash
     , fromString, fromBech32, fromBytes
     , enterprise, script, base, pointer
-    , isShelleyWallet, extractCredentialHash, extractCredentialKeyHash, extractPubKeyHash, extractStakeCredential, extractStakeKeyHash
+    , isShelleyWallet, extractNetworkId, extractCredentialHash, extractCredentialKeyHash, extractPubKeyHash, extractStakeCredential, extractStakeKeyHash
     , setShelleyStakeCred
     , Dict, emptyDict, dictFromList
     , StakeDict, emptyStakeDict, stakeDictFromList
@@ -23,7 +23,7 @@ module Cardano.Address exposing
 
 @docs enterprise, script, base, pointer
 
-@docs isShelleyWallet, extractCredentialHash, extractCredentialKeyHash, extractPubKeyHash, extractStakeCredential, extractStakeKeyHash
+@docs isShelleyWallet, extractNetworkId, extractCredentialHash, extractCredentialKeyHash, extractPubKeyHash, extractStakeCredential, extractStakeKeyHash
 
 @docs setShelleyStakeCred
 
@@ -72,6 +72,21 @@ type alias StakeAddress =
 type NetworkId
     = Testnet -- 0
     | Mainnet -- 1
+
+
+{-| Extract the network ID from an address. Return [Nothing] for a Byron address.
+-}
+extractNetworkId : Address -> Maybe NetworkId
+extractNetworkId address =
+    case address of
+        Byron _ ->
+            Nothing
+
+        Shelley { networkId } ->
+            Just networkId
+
+        Reward { networkId } ->
+            Just networkId
 
 
 {-| Phantom type for Byron addresses.

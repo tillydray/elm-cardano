@@ -2460,10 +2460,10 @@ extractCertificateCred cert =
             []
 
         StakeDeregistrationCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeDelegationCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         PoolRegistrationCert { operator, poolOwners } ->
             operator :: poolOwners
@@ -2480,25 +2480,25 @@ extractCertificateCred cert =
             []
 
         RegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         UnregCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         VoteDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeVoteDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         VoteRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeVoteRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         AuthCommitteeHotCert _ ->
             Debug.todo "How many signatures for AuthCommitteeHotCert?"
@@ -2507,13 +2507,13 @@ extractCertificateCred cert =
             Debug.todo "How many signatures for ResignCommitteeColdCert?"
 
         RegDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
         UnregDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
         UpdateDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
 
 {-| Update the known local state with the spent and created UTxOs of a given transaction.

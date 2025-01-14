@@ -1,12 +1,12 @@
 module Cardano.Script exposing
-    ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, hash
+    ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, extractSigners, hash
     , toCbor, encodeNativeScript, encodePlutusScript
     , fromCbor, decodeNativeScript
     )
 
 {-| Script
 
-@docs Script, NativeScript, PlutusScript, PlutusVersion, ScriptCbor, hash
+@docs Script, NativeScript, PlutusScript, PlutusVersion, ScriptCbor, extractSigners, hash
 
 
 ## Encoders
@@ -27,6 +27,7 @@ import Cbor.Decode as D
 import Cbor.Decode.Extra as D
 import Cbor.Encode as E
 import Cbor.Encode.Extra as EE
+import Dict exposing (Dict)
 import Natural exposing (Natural)
 
 
@@ -76,6 +77,36 @@ type PlutusVersion
 -}
 type ScriptCbor
     = ScriptCbor Never
+
+
+{-| Extract all mentionned pubkeys in the Native script.
+Keys of the dict are the hex version of the keys.
+-}
+extractSigners : NativeScript -> Dict String (Bytes CredentialHash)
+extractSigners nativeScript =
+    extractSignersHelper nativeScript Dict.empty
+
+
+extractSignersHelper : NativeScript -> Dict String (Bytes CredentialHash) -> Dict String (Bytes CredentialHash)
+extractSignersHelper nativeScript accum =
+    case nativeScript of
+        ScriptPubkey key ->
+            Dict.insert (Bytes.toHex key) key accum
+
+        ScriptAll list ->
+            List.foldl extractSignersHelper accum list
+
+        ScriptAny list ->
+            List.foldl extractSignersHelper accum list
+
+        ScriptNofK _ list ->
+            List.foldl extractSignersHelper accum list
+
+        InvalidBefore _ ->
+            accum
+
+        InvalidHereafter _ ->
+            accum
 
 
 {-| Compute the script hash.

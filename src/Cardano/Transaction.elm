@@ -8,6 +8,7 @@ module Cardano.Transaction exposing
     , Relay(..), IpV4, IpV6, PoolParams, PoolMetadata, PoolMetadataHash
     , VKeyWitness, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
     , FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, allInputs
+    , computeTxId, locateScriptWithHash
     , updateSignatures, hashScriptData
     , deserialize, serialize, encodeToCbor
     , decodeWitnessSet, decodeVKeyWitness, encodeVKeyWitness
@@ -33,6 +34,8 @@ module Cardano.Transaction exposing
 
 @docs FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, allInputs
 
+@docs computeTxId, locateScriptWithHash
+
 @docs updateSignatures, hashScriptData
 
 @docs deserialize, serialize, encodeToCbor
@@ -50,9 +53,9 @@ import Cardano.Data as Data exposing (Data)
 import Cardano.Gov as Gov exposing (ActionId, Anchor, CostModels, Drep, ProposalProcedure, ProtocolParamUpdate, UnitInterval, Voter, VotingProcedure)
 import Cardano.MultiAsset as MultiAsset exposing (MultiAsset, PolicyId)
 import Cardano.Redeemer as Redeemer exposing (ExUnitPrices, Redeemer)
-import Cardano.Script as Script exposing (NativeScript, ScriptCbor)
+import Cardano.Script as Script exposing (NativeScript, Script, ScriptCbor)
 import Cardano.Utils as Utils exposing (RationalNumber)
-import Cardano.Utxo as Utxo exposing (Output, OutputReference, encodeOutput, encodeOutputReference)
+import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId, encodeOutput, encodeOutputReference)
 import Cbor.Decode as D
 import Cbor.Decode.Extra as D
 import Cbor.Encode as E
@@ -543,6 +546,43 @@ allInputs tx =
         ]
         |> List.map (\ref -> ( ref, () ))
         |> Utxo.refDictFromList
+
+
+{-| Serialize the body and compute the Tx ID.
+-}
+computeTxId : Transaction -> Bytes TransactionId
+computeTxId tx =
+    let
+        bodyBytes =
+            E.encode (encodeTransactionBody tx.body)
+                |> Bytes.fromBytes
+    in
+    Bytes.toU8 bodyBytes
+        |> blake2b256 Nothing
+        |> Bytes.fromU8
+
+
+{-| Helper function to locate the index of a script within a list of Outputs.
+-}
+locateScriptWithHash : Bytes CredentialHash -> List Output -> Maybe ( Int, Script )
+locateScriptWithHash scriptHash outputs =
+    let
+        findScriptInOutput : Int -> Output -> Maybe ( Int, Script )
+        findScriptInOutput index output =
+            case output.referenceScript of
+                Just script ->
+                    if Script.hash script == scriptHash then
+                        Just ( index, script )
+
+                    else
+                        Nothing
+
+                Nothing ->
+                    Nothing
+    in
+    List.indexedMap findScriptInOutput outputs
+        |> List.filterMap identity
+        |> List.head
 
 
 {-| Clear all signatures from the witness set of the Tx.

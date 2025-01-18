@@ -19,6 +19,7 @@
         "Cardano.Interval",
         "Cardano.Metadatum",
         "Cardano.MultiAsset",
+        "Cardano.Pool",
         "Cardano.Redeemer",
         "Cardano.Script",
         "Cardano.Transaction",

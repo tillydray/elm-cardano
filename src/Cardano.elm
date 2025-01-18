@@ -383,9 +383,10 @@ import Cardano.Data as Data exposing (Data)
 import Cardano.Gov as Gov exposing (Action, ActionId, Anchor, Constitution, CostModels, Drep(..), ProposalProcedure, ProtocolParamUpdate, ProtocolVersion, UnitInterval, Vote, Voter(..))
 import Cardano.Metadatum exposing (Metadatum)
 import Cardano.MultiAsset as MultiAsset exposing (AssetName, MultiAsset, PolicyId)
+import Cardano.Pool as Pool
 import Cardano.Redeemer as Redeemer exposing (Redeemer, RedeemerTag)
 import Cardano.Script as Script exposing (NativeScript, PlutusVersion(..), ScriptCbor)
-import Cardano.Transaction as Transaction exposing (Certificate(..), PoolId, PoolParams, Transaction, TransactionBody, VKeyWitness, WitnessSet)
+import Cardano.Transaction as Transaction exposing (Certificate(..), Transaction, TransactionBody, VKeyWitness, WitnessSet)
 import Cardano.Uplc as Uplc
 import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId)
 import Cardano.Value as Value exposing (Value)
@@ -455,10 +456,10 @@ stake pool management, and voting or delegating your voting power.
 type CertificateIntent
     = RegisterStake { delegator : CredentialWitness, deposit : Natural }
     | UnregisterStake { delegator : CredentialWitness, refund : Natural }
-    | DelegateStake { delegator : CredentialWitness, poolId : Bytes PoolId }
+    | DelegateStake { delegator : CredentialWitness, poolId : Bytes Pool.Id }
       -- Pool management
-    | RegisterPool { deposit : Natural } PoolParams
-    | RetirePool { poolId : Bytes PoolId, epoch : Natural }
+    | RegisterPool { deposit : Natural } Pool.Params
+    | RetirePool { poolId : Bytes Pool.Id, epoch : Natural }
       -- Vote management
     | RegisterDrep { drep : CredentialWitness, deposit : Natural, info : Maybe Anchor }
     | UnregisterDrep { drep : CredentialWitness, refund : Natural }

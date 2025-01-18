@@ -1,12 +1,15 @@
 module Cardano.Pool exposing
-    ( Id, Params, VrfKeyHash, Relay(..), IpV4, IpV6
+    ( Id, toBech32, fromBech32
+    , Params, VrfKeyHash, Relay(..), IpV4, IpV6
     , Metadata, MetadataHash
     , encodeParams, decodeParams
     )
 
 {-| Handling Cardano values.
 
-@docs Id, Params, VrfKeyHash, Relay, IpV4, IpV6
+@docs Id, toBech32, fromBech32
+
+@docs Params, VrfKeyHash, Relay, IpV4, IpV6
 
 @docs Metadata, MetadataHash
 
@@ -14,6 +17,8 @@ module Cardano.Pool exposing
 
 -}
 
+import Bech32.Decode as Bech32
+import Bech32.Encode as Bech32
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Cardano.Address as Address exposing (CredentialHash, StakeAddress)
 import Cardano.Gov exposing (UnitInterval)
@@ -30,6 +35,30 @@ This is a 28-bytes Blake2b-224 hash.
 -}
 type alias Id =
     CredentialHash
+
+
+{-| Convert a Pool Id to its Bech32 representation.
+-}
+toBech32 : Bytes Id -> String
+toBech32 id =
+    Bech32.encode { prefix = "pool", data = Bytes.toBytes id }
+        |> Result.withDefault "pool"
+
+
+{-| Convert a Pool Id from its Bech32 representation.
+-}
+fromBech32 : String -> Maybe (Bytes Id)
+fromBech32 str =
+    case Bech32.decode str of
+        Err _ ->
+            Nothing
+
+        Ok { prefix, data } ->
+            if prefix == "pool" then
+                Just <| Bytes.fromBytes data
+
+            else
+                Nothing
 
 
 {-| Parameters for stake pool registration.

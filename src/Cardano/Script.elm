@@ -1,12 +1,12 @@
 module Cardano.Script exposing
-    ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, extractSigners, hash
+    ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, extractSigners, hash, fromBech32, toBech32
     , toCbor, encodeNativeScript, encodePlutusScript
     , fromCbor, decodeNativeScript
     )
 
 {-| Script
 
-@docs Script, NativeScript, PlutusScript, PlutusVersion, ScriptCbor, extractSigners, hash
+@docs Script, NativeScript, PlutusScript, PlutusVersion, ScriptCbor, extractSigners, hash, fromBech32, toBech32
 
 
 ## Encoders
@@ -20,6 +20,8 @@ module Cardano.Script exposing
 
 -}
 
+import Bech32.Decode as Bech32
+import Bech32.Encode as Bech32
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Cardano.Address exposing (CredentialHash)
@@ -126,6 +128,30 @@ hash script =
     in
     blake2b224 Nothing (Bytes.toU8 taggedScriptBytes)
         |> Bytes.fromU8
+
+
+{-| Convert a script hash to its Bech32 representation.
+-}
+toBech32 : Bytes CredentialHash -> String
+toBech32 id =
+    Bech32.encode { prefix = "script", data = Bytes.toBytes id }
+        |> Result.withDefault "script"
+
+
+{-| Convert a script hash from its Bech32 representation.
+-}
+fromBech32 : String -> Maybe (Bytes CredentialHash)
+fromBech32 str =
+    case Bech32.decode str of
+        Err _ ->
+            Nothing
+
+        Ok { prefix, data } ->
+            if prefix == "script" then
+                Just <| Bytes.fromBytes data
+
+            else
+                Nothing
 
 
 {-| Cbor Encoder for [Script]

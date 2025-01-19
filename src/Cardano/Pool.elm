@@ -21,8 +21,7 @@ import Bech32.Decode as Bech32
 import Bech32.Encode as Bech32
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Cardano.Address as Address exposing (CredentialHash, StakeAddress)
-import Cardano.Gov exposing (UnitInterval)
-import Cardano.Utils as Utils
+import Cardano.Utils as Utils exposing (UnitInterval)
 import Cbor.Decode as D
 import Cbor.Decode.Extra as DE
 import Cbor.Encode as E

@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/0cd24e14-12e9-4274-bc16-a4ad8daa47e4" />
+</p>
+
+
 # Elm Cardano
 
 Elm offchain package for Cardano. This project aims to be the friendliest and
@@ -9,7 +14,7 @@ So you will find the docs either locally by running elm-doc-preview,
 or online at [its static preview page][docs-preview].
 
 [aiken]: https://aiken-lang.org/
-[docs-preview]: https://elm-doc-preview.netlify.app/Cardano?repo=mpizenberg%2Felm-cardano&version=elm-doc-preview
+[docs-preview]: https://elm-doc-preview.netlify.app/Cardano?repo=elm-cardano%2Felm-cardano&version=elm-doc-preview
 
 ## Why elm-cardano?
 
@@ -36,11 +41,11 @@ Install the elm-cardano CLI and the Elm package.
 
 ```sh
 # Install the elm compiler and the elm-cardano CLI
-npm install -g elm @mattpiz/elm-cardano
+npm install -g elm elm-cardano
 
 # (Temporary) clone the elm-cardano repo to expose its elm modules
 # This step won’t be necessary when the elm package will be published
-git clone --depth 1 --branch v0.1.5 https://github.com/mpizenberg/elm-cardano.git
+git clone --depth 1 --branch v0.1.6 https://github.com/elm-cardano/elm-cardano.git
 
 # Initialize a template project in the elm-cardano-starter/ folder
 mkdir elm-cardano-starter && cd elm-cardano-starter
@@ -111,3 +116,8 @@ npx elm-review
 # run the Tx builder example
 cd examples/txbuild && npx elm-watch hot
 ```
+
+## Credits
+
+Many thanks to all people who contributed code and ideas to elm-cardano.
+Many thanks to the person (they know who they are) who contributed the logo.

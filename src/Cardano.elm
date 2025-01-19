@@ -1,13 +1,13 @@
 module Cardano exposing
-    ( TxIntent(..), SpendSource(..), InputsOutputs, ScriptWitness(..), PlutusScriptWitness, WitnessSource(..)
+    ( TxIntent(..), SpendSource(..), InputsOutputs, ScriptWitness(..), NativeScriptWitness, PlutusScriptWitness, WitnessSource(..)
     , CertificateIntent(..), CredentialWitness(..), VoterWitness(..)
-    , ProposalIntent, ActionProposal(..)
+    , VoteIntent, ProposalIntent, ActionProposal(..)
     , TxOtherInfo(..)
     , Fee(..)
     , finalize, finalizeAdvanced, TxFinalizationError(..)
     , GovernanceState, emptyGovernanceState
     , updateLocalState, addUtxosToLocalState
-    , dummyBytes
+    , dummyBytes, dummyBytesWithPrefix, prettyBytes
     )
 
 {-| Cardano stuff
@@ -361,15 +361,15 @@ We can embed it directly in the transaction witness.
 
 ## Code Documentation
 
-@docs TxIntent, SpendSource, InputsOutputs, ScriptWitness, PlutusScriptWitness, WitnessSource
+@docs TxIntent, SpendSource, InputsOutputs, ScriptWitness, NativeScriptWitness, PlutusScriptWitness, WitnessSource
 @docs CertificateIntent, CredentialWitness, VoterWitness
-@docs ProposalIntent, ActionProposal
+@docs VoteIntent, ProposalIntent, ActionProposal
 @docs TxOtherInfo
 @docs Fee
 @docs finalize, finalizeAdvanced, TxFinalizationError
 @docs GovernanceState, emptyGovernanceState
 @docs updateLocalState, addUtxosToLocalState
-@docs dummyBytes
+@docs dummyBytes, dummyBytesWithPrefix, prettyBytes
 
 -}
 
@@ -380,13 +380,15 @@ import Cardano.Address as Address exposing (Address(..), Credential(..), Credent
 import Cardano.AuxiliaryData as AuxiliaryData exposing (AuxiliaryData)
 import Cardano.CoinSelection as CoinSelection exposing (Error(..))
 import Cardano.Data as Data exposing (Data)
-import Cardano.Gov as Gov exposing (Action, ActionId, Anchor, Constitution, CostModels, Drep(..), ProposalProcedure, ProtocolParamUpdate, ProtocolVersion, UnitInterval, Vote, Voter(..))
+import Cardano.Gov as Gov exposing (Action, ActionId, Anchor, Constitution, CostModels, Drep(..), ProposalProcedure, ProtocolParamUpdate, ProtocolVersion, Vote, Voter(..))
 import Cardano.Metadatum exposing (Metadatum)
 import Cardano.MultiAsset as MultiAsset exposing (AssetName, MultiAsset, PolicyId)
+import Cardano.Pool as Pool
 import Cardano.Redeemer as Redeemer exposing (Redeemer, RedeemerTag)
 import Cardano.Script as Script exposing (NativeScript, PlutusVersion(..), ScriptCbor)
-import Cardano.Transaction as Transaction exposing (Certificate(..), PoolId, PoolParams, Transaction, TransactionBody, VKeyWitness, WitnessSet)
+import Cardano.Transaction as Transaction exposing (Certificate(..), Transaction, TransactionBody, VKeyWitness, WitnessSet)
 import Cardano.Uplc as Uplc
+import Cardano.Utils exposing (UnitInterval)
 import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId)
 import Cardano.Value as Value exposing (Value)
 import Cbor.Encode as E
@@ -420,7 +422,7 @@ type TxIntent
         , amount : Natural
         , scriptWitness : Maybe ScriptWitness
         }
-    | Vote VoterWitness (List { actionId : ActionId, vote : Vote })
+    | Vote VoterWitness (List VoteIntent)
     | Propose ProposalIntent
 
 
@@ -455,10 +457,10 @@ stake pool management, and voting or delegating your voting power.
 type CertificateIntent
     = RegisterStake { delegator : CredentialWitness, deposit : Natural }
     | UnregisterStake { delegator : CredentialWitness, refund : Natural }
-    | DelegateStake { delegator : CredentialWitness, poolId : Bytes PoolId }
+    | DelegateStake { delegator : CredentialWitness, poolId : Bytes Pool.Id }
       -- Pool management
-    | RegisterPool { deposit : Natural } PoolParams
-    | RetirePool { poolId : Bytes PoolId, epoch : Natural }
+    | RegisterPool { deposit : Natural } Pool.Params
+    | RetirePool { poolId : Bytes Pool.Id, epoch : Natural }
       -- Vote management
     | RegisterDrep { drep : CredentialWitness, deposit : Natural, info : Maybe Anchor }
     | UnregisterDrep { drep : CredentialWitness, refund : Natural }
@@ -516,8 +518,18 @@ noInputsOutputs =
 {-| Represents different types of script witnesses.
 -}
 type ScriptWitness
-    = NativeWitness (WitnessSource NativeScript)
+    = NativeWitness NativeScriptWitness
     | PlutusWitness PlutusScriptWitness
+
+
+{-| Represents a Native script witness.
+Expected signatures are not put in the "required\_signers" field of the Tx
+but are still used to estimate fees.
+-}
+type alias NativeScriptWitness =
+    { script : WitnessSource NativeScript
+    , expectedSigners : List (Bytes CredentialHash)
+    }
 
 
 {-| Represents a Plutus script witness.
@@ -548,6 +560,15 @@ extractWitnessRef witnessSource =
 
         WitnessReference ref ->
             Just ref
+
+
+{-| Governance vote.
+-}
+type alias VoteIntent =
+    { actionId : ActionId
+    , vote : Vote
+    , rationale : Maybe Anchor
+    }
 
 
 {-| Governance action proposal.
@@ -1141,12 +1162,13 @@ type alias PreProcessedIntents =
     , nativeScriptSources : List (WitnessSource NativeScript)
     , plutusScriptSources : List ( PlutusVersion, WitnessSource (Bytes ScriptCbor) )
     , datumSources : List (WitnessSource Data)
+    , expectedSigners : List (List (Bytes CredentialHash)) -- like requiredSigners, but not to put in the required_signers field of the Tx
     , requiredSigners : List (List (Bytes CredentialHash))
     , mints : List { policyId : Bytes CredentialHash, assets : BytesMap AssetName Integer, redeemer : Maybe (InputsOutputs -> Data) }
     , withdrawals : List { stakeAddress : StakeAddress, amount : Natural, redeemer : Maybe (InputsOutputs -> Data) }
     , certificates : List ( Certificate, Maybe (InputsOutputs -> Data) )
     , proposalIntents : List ProposalIntent
-    , votes : List { voter : Voter, votes : List { actionId : ActionId, vote : Vote }, redeemer : Maybe (InputsOutputs -> Data) }
+    , votes : List { voter : Voter, votes : List VoteIntent, redeemer : Maybe (InputsOutputs -> Data) }
     , totalDeposit : Natural
     , totalRefund : Natural
     }
@@ -1161,6 +1183,7 @@ noIntent =
     , nativeScriptSources = []
     , plutusScriptSources = []
     , datumSources = []
+    , expectedSigners = []
     , requiredSigners = []
     , mints = []
     , withdrawals = []
@@ -1257,9 +1280,10 @@ preProcessIntents txIntents =
 
                 MintBurn { policyId, assets, scriptWitness } ->
                     case scriptWitness of
-                        NativeWitness script ->
+                        NativeWitness { script, expectedSigners } ->
                             { preProcessedIntents
                                 | nativeScriptSources = script :: preProcessedIntents.nativeScriptSources
+                                , expectedSigners = expectedSigners :: preProcessedIntents.expectedSigners
                                 , mints = { policyId = policyId, assets = assets, redeemer = Nothing } :: preProcessedIntents.mints
                             }
 
@@ -1277,10 +1301,11 @@ preProcessIntents txIntents =
                                 | withdrawals = { stakeAddress = stakeCredential, amount = amount, redeemer = Nothing } :: preProcessedIntents.withdrawals
                             }
 
-                        Just (NativeWitness script) ->
+                        Just (NativeWitness { script, expectedSigners }) ->
                             { preProcessedIntents
                                 | withdrawals = { stakeAddress = stakeCredential, amount = amount, redeemer = Nothing } :: preProcessedIntents.withdrawals
                                 , nativeScriptSources = script :: preProcessedIntents.nativeScriptSources
+                                , expectedSigners = expectedSigners :: preProcessedIntents.expectedSigners
                             }
 
                         Just (PlutusWitness { script, redeemerData, requiredSigners }) ->
@@ -1370,10 +1395,11 @@ preProcessIntents txIntents =
                         | votes = { voter = VoterCommitteeHotCred (VKeyHash cred), votes = votes, redeemer = Nothing } :: preProcessedIntents.votes
                     }
 
-                Vote (WithCommitteeHotCred (WithScript cred (NativeWitness script))) votes ->
+                Vote (WithCommitteeHotCred (WithScript cred (NativeWitness { script, expectedSigners }))) votes ->
                     { preProcessedIntents
                         | votes = { voter = VoterCommitteeHotCred (ScriptHash cred), votes = votes, redeemer = Nothing } :: preProcessedIntents.votes
                         , nativeScriptSources = script :: preProcessedIntents.nativeScriptSources
+                        , expectedSigners = expectedSigners :: preProcessedIntents.expectedSigners
                     }
 
                 Vote (WithCommitteeHotCred (WithScript cred (PlutusWitness { script, redeemerData, requiredSigners }))) votes ->
@@ -1388,10 +1414,11 @@ preProcessIntents txIntents =
                         | votes = { voter = VoterDrepCred (VKeyHash cred), votes = votes, redeemer = Nothing } :: preProcessedIntents.votes
                     }
 
-                Vote (WithDrepCred (WithScript cred (NativeWitness script))) votes ->
+                Vote (WithDrepCred (WithScript cred (NativeWitness { script, expectedSigners }))) votes ->
                     { preProcessedIntents
                         | votes = { voter = VoterDrepCred (ScriptHash cred), votes = votes, redeemer = Nothing } :: preProcessedIntents.votes
                         , nativeScriptSources = script :: preProcessedIntents.nativeScriptSources
+                        , expectedSigners = expectedSigners :: preProcessedIntents.expectedSigners
                     }
 
                 Vote (WithDrepCred (WithScript cred (PlutusWitness { script, redeemerData, requiredSigners }))) votes ->
@@ -1438,10 +1465,11 @@ preprocessCert certWithKeyF certWithScriptF { deposit, refund } cred preProcesse
                 , totalRefund = Natural.add refund preProcessedIntents.totalRefund
             }
 
-        WithScript scriptHash (NativeWitness script) ->
+        WithScript scriptHash (NativeWitness { script, expectedSigners }) ->
             { preProcessedIntents
                 | certificates = ( certWithScriptF scriptHash, Nothing ) :: preProcessedIntents.certificates
                 , nativeScriptSources = script :: preProcessedIntents.nativeScriptSources
+                , expectedSigners = expectedSigners :: preProcessedIntents.expectedSigners
                 , totalDeposit = Natural.add deposit preProcessedIntents.totalDeposit
                 , totalRefund = Natural.add refund preProcessedIntents.totalRefund
             }
@@ -1464,13 +1492,14 @@ type alias ProcessedIntents =
     , nativeScriptSources : List (WitnessSource NativeScript)
     , plutusScriptSources : List ( PlutusVersion, WitnessSource (Bytes ScriptCbor) )
     , datumSources : List (WitnessSource Data)
+    , expectedSigners : List (Bytes CredentialHash)
     , requiredSigners : List (Bytes CredentialHash)
     , totalMinted : MultiAsset Integer
     , mintRedeemers : BytesMap PolicyId (Maybe (InputsOutputs -> Data))
     , withdrawals : Address.StakeDict { amount : Natural, redeemer : Maybe (InputsOutputs -> Data) }
     , certificates : List ( Certificate, Maybe (InputsOutputs -> Data) )
     , proposals : List ( ProposalProcedure, Maybe Data )
-    , votes : Gov.VoterDict { votes : List { actionId : ActionId, vote : Vote }, redeemer : Maybe (InputsOutputs -> Data) }
+    , votes : Gov.VoterDict { votes : List VoteIntent, redeemer : Maybe (InputsOutputs -> Data) }
     }
 
 
@@ -1616,6 +1645,13 @@ processIntents govState localStateUtxos txIntents =
                                 |> List.map (\signer -> ( signer, () ))
                                 |> Map.fromList
                                 |> Map.keys
+
+                        -- Dedup expected signers
+                        expectedSigners =
+                            List.concat preProcessedIntents.expectedSigners
+                                |> List.map (\signer -> ( signer, () ))
+                                |> Map.fromList
+                                |> Map.keys
                     in
                     { freeInputs = preProcessedIntents.freeInputs
                     , freeOutputs = preProcessedIntents.freeOutputs
@@ -1627,6 +1663,7 @@ processIntents govState localStateUtxos txIntents =
                     , nativeScriptSources = dedupWithCbor (encodeWitnessSource Script.encodeNativeScript) preProcessedIntents.nativeScriptSources
                     , plutusScriptSources = dedupWithCbor (Tuple.second >> encodeWitnessSource Bytes.toCbor) plutusScriptSources
                     , datumSources = dedupWithCbor (encodeWitnessSource Data.toCbor) preProcessedIntents.datumSources
+                    , expectedSigners = expectedSigners
                     , requiredSigners = requiredSigners
                     , totalMinted = totalMintedAndBurned
                     , mintRedeemers =
@@ -2224,7 +2261,7 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
                 |> List.filterMap identity
 
         -- Sort votes with the Voter order
-        sortedVotes : List ( Voter, { votes : List { actionId : ActionId, vote : Vote }, redeemer : Maybe (InputsOutputs -> Data) } )
+        sortedVotes : List ( Voter, { votes : List VoteIntent, redeemer : Maybe (InputsOutputs -> Data) } )
         sortedVotes =
             Dict.Any.toList processedIntents.votes
 
@@ -2272,6 +2309,7 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
         dummyVKeyWitness : List VKeyWitness
         dummyVKeyWitness =
             (processedIntents.requiredSigners
+                ++ processedIntents.expectedSigners
                 ++ walletCredsInInputs
                 ++ withdrawalsStakeCreds
                 ++ certificatesCreds
@@ -2279,13 +2317,24 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
             )
                 |> List.map
                     (\cred ->
+                        -- Try keeping the 28 bytes of the credential hash at the start if it’s an actual cred
+                        -- or prefix with VKEY and SIGNATURE for fake creds in textual shape (used in tests).
                         let
-                            credAsText =
-                                Bytes.toText cred
-                                    |> Maybe.withDefault (Bytes.toHex cred)
-                                    |> String.left 28
+                            credStr =
+                                prettyBytes cred
+
+                            ( vkey, signature ) =
+                                if credStr == Bytes.toHex cred then
+                                    ( dummyBytesWithPrefix 32 cred
+                                    , dummyBytesWithPrefix 64 cred
+                                    )
+
+                                else
+                                    ( dummyBytes 32 <| "VKEY" ++ credStr
+                                    , dummyBytes 64 <| "SIGNATURE" ++ credStr
+                                    )
                         in
-                        ( cred, { vkey = dummyBytes 32 ("VKEY" ++ credAsText), signature = dummyBytes 64 ("SIGNATURE" ++ credAsText) } )
+                        ( cred, { vkey = vkey, signature = signature } )
                     )
                 -- Convert to a BytesMap to ensure credentials unicity
                 |> Map.fromList
@@ -2390,7 +2439,7 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
             , referenceInputs = allReferenceInputs
             , votingProcedures =
                 sortedVotes
-                    |> List.map (Tuple.mapSecond (\{ votes } -> List.map (\{ actionId, vote } -> ( actionId, Gov.VotingProcedure vote Nothing )) votes))
+                    |> List.map (Tuple.mapSecond (\{ votes } -> List.map (\{ actionId, vote, rationale } -> ( actionId, Gov.VotingProcedure vote rationale )) votes))
             , proposalProcedures = List.map Tuple.first processedIntents.proposals
             , currentTreasuryValue = Nothing -- TODO currentTreasuryValue
             , treasuryDonation = Nothing -- TODO treasuryDonation
@@ -2413,10 +2462,10 @@ extractCertificateCred cert =
             []
 
         StakeDeregistrationCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeDelegationCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         PoolRegistrationCert { operator, poolOwners } ->
             operator :: poolOwners
@@ -2433,25 +2482,25 @@ extractCertificateCred cert =
             []
 
         RegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         UnregCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         VoteDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeVoteDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         VoteRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         StakeVoteRegDelegCert { delegator } ->
-            [ Address.extractCredentialHash delegator ]
+            List.filterMap identity [ Address.extractCredentialKeyHash delegator ]
 
         AuthCommitteeHotCert _ ->
             Debug.todo "How many signatures for AuthCommitteeHotCert?"
@@ -2460,13 +2509,13 @@ extractCertificateCred cert =
             Debug.todo "How many signatures for ResignCommitteeColdCert?"
 
         RegDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
         UnregDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
         UpdateDrepCert { drepCredential } ->
-            [ Address.extractCredentialHash drepCredential ]
+            List.filterMap identity [ Address.extractCredentialKeyHash drepCredential ]
 
 
 {-| Update the known local state with the spent and created UTxOs of a given transaction.
@@ -2501,16 +2550,54 @@ addUtxosToLocalState utxos oldState =
     List.foldl (\( ref, output ) state -> Dict.Any.insert ref output state) oldState utxos
 
 
-{-| Unsafe helper function to make up some bytes of a given length,
+{-| Helper function to make up some bytes of a given length,
 starting by the given text when decoded as text.
 -}
 dummyBytes : Int -> String -> Bytes a
 dummyBytes length prefix =
     let
         zeroSuffix =
-            String.repeat (length - String.length prefix) "0"
+            String.repeat (2 * length) "0"
     in
     Bytes.fromText (prefix ++ zeroSuffix)
+        |> Bytes.toHex
+        |> String.slice 0 (2 * length)
+        |> Bytes.fromHexUnchecked
+
+
+{-| Helper function to make up some bytes of a given length,
+starting with the provided bytes.
+-}
+dummyBytesWithPrefix : Int -> Bytes a -> Bytes b
+dummyBytesWithPrefix length bytesPrefix =
+    let
+        zeroSuffix =
+            String.repeat (2 * length) "0"
+    in
+    (Bytes.toHex bytesPrefix ++ zeroSuffix)
+        |> String.slice 0 (2 * length)
+        |> Bytes.fromHexUnchecked
+
+
+{-| Helper function that convert bytes to either Text if it looks like text,
+or its Hex representation otherwise.
+-}
+prettyBytes : Bytes a -> String
+prettyBytes b =
+    case Bytes.toText b of
+        Nothing ->
+            Bytes.toHex b
+
+        Just text ->
+            let
+                isLikelyAscii char =
+                    Char.toCode char < 128
+            in
+            if String.all isLikelyAscii text then
+                text
+
+            else
+                Bytes.toHex b
 
 
 witnessSourceToResult : WitnessSource a -> Result a OutputReference

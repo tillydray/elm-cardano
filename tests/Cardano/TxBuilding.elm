@@ -3,7 +3,7 @@ module Cardano.TxBuilding exposing (suite)
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection exposing (Error(..))
 import Cardano.Data as Data
@@ -283,7 +283,7 @@ okTxBuilding =
                 [ MintBurn
                     { policyId = dog.policyId
                     , assets = Map.singleton dog.assetName Integer.one
-                    , scriptWitness = NativeWitness (WitnessReference dog.scriptRef)
+                    , scriptWitness = NativeWitness { script = WitnessReference dog.scriptRef, expectedSigners = [] }
                     }
                 , SendTo testAddr.me (Value.onlyToken dog.policyId dog.assetName Natural.one)
 
@@ -292,7 +292,7 @@ okTxBuilding =
                 , MintBurn
                     { policyId = cat.policyId
                     , assets = Map.singleton cat.assetName Integer.negativeOne
-                    , scriptWitness = NativeWitness (WitnessReference cat.scriptRef)
+                    , scriptWitness = NativeWitness { script = WitnessReference cat.scriptRef, expectedSigners = [] }
                     }
                 ]
             }
@@ -672,7 +672,7 @@ okTxBuilding =
                 WithPoolCred (dummyCredentialHash "poolId")
 
             withMyDrepScript =
-                WithDrepCred (WithScript drepScriptHash <| NativeWitness (WitnessValue drepScript))
+                WithDrepCred (WithScript drepScriptHash <| NativeWitness { script = WitnessValue drepScript, expectedSigners = [] })
           in
           okTxTest "Test with multiple votes"
             { govState = Cardano.emptyGovernanceState
@@ -684,17 +684,17 @@ okTxBuilding =
             , txOtherInfo = []
             , txIntents =
                 [ Vote withMyDrepCred
-                    [ { actionId = actionId 0, vote = VoteYes }
-                    , { actionId = actionId 1, vote = VoteYes }
+                    [ { actionId = actionId 0, vote = VoteYes, rationale = Nothing }
+                    , { actionId = actionId 1, vote = VoteYes, rationale = Nothing }
                     ]
                 , Vote withMyPoolCred
-                    [ { actionId = actionId 1, vote = VoteNo }
-                    , { actionId = actionId 0, vote = VoteNo }
+                    [ { actionId = actionId 1, vote = VoteNo, rationale = Nothing }
+                    , { actionId = actionId 0, vote = VoteNo, rationale = Nothing }
                     ]
 
                 -- action 1 will be overwritten by action 0, because same Voter
-                , Vote withMyDrepScript [ { actionId = actionId 1, vote = VoteAbstain } ]
-                , Vote withMyDrepScript [ { actionId = actionId 0, vote = VoteAbstain } ]
+                , Vote withMyDrepScript [ { actionId = actionId 1, vote = VoteAbstain, rationale = Nothing } ]
+                , Vote withMyDrepScript [ { actionId = actionId 0, vote = VoteAbstain, rationale = Nothing } ]
                 ]
             }
             (\_ ->
@@ -1029,18 +1029,6 @@ autoFee =
 
 
 -- Helper functions
-
-
-{-| Unsafe helper function to make up some bytes of a given length,
-starting by the given text when decoded as text.
--}
-dummyBytes : Int -> String -> Bytes a
-dummyBytes length prefix =
-    let
-        zeroSuffix =
-            String.repeat (length - String.length prefix) "0"
-    in
-    Bytes.fromText (prefix ++ zeroSuffix)
 
 
 dummyCredentialHash : String -> Bytes CredentialHash

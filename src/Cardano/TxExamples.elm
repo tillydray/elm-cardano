@@ -14,7 +14,7 @@ module Cardano.TxExamples exposing
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalize, finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalize, finalizeAdvanced, prettyBytes)
 import Cardano.Address as Address exposing (Address(..), Credential(..), CredentialHash, NetworkId(..), StakeAddress, StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection
 import Cardano.Data as Data
@@ -116,7 +116,7 @@ example2 _ =
     [ MintBurn
         { policyId = dog.policyId
         , assets = Map.singleton dog.assetName Integer.one
-        , scriptWitness = NativeWitness (WitnessReference dog.scriptRef)
+        , scriptWitness = NativeWitness { script = WitnessReference dog.scriptRef, expectedSigners = [] }
         }
     , SendTo exAddr.me (Value.onlyToken dog.policyId dog.assetName Natural.one)
 
@@ -125,7 +125,7 @@ example2 _ =
     , MintBurn
         { policyId = cat.policyId
         , assets = Map.singleton cat.assetName Integer.negativeOne
-        , scriptWitness = NativeWitness (WitnessReference cat.scriptRef)
+        , scriptWitness = NativeWitness { script = WitnessReference cat.scriptRef, expectedSigners = [] }
         }
     ]
         |> finalize globalStateUtxos []
@@ -372,20 +372,20 @@ example6 _ =
             WithPoolCred (dummyCredentialHash "poolId-")
 
         withMyDrepScript =
-            WithDrepCred (WithScript drepScriptHash <| NativeWitness (WitnessValue drepScript))
+            WithDrepCred (WithScript drepScriptHash <| NativeWitness { script = WitnessValue drepScript, expectedSigners = [] })
     in
     [ Vote withMyDrepCred
-        [ { actionId = actionId 0, vote = VoteYes }
-        , { actionId = actionId 1, vote = VoteYes }
+        [ { actionId = actionId 0, vote = VoteYes, rationale = Nothing }
+        , { actionId = actionId 1, vote = VoteYes, rationale = Nothing }
         ]
     , Vote withMyPoolCred
-        [ { actionId = actionId 1, vote = VoteNo }
-        , { actionId = actionId 0, vote = VoteNo }
+        [ { actionId = actionId 1, vote = VoteNo, rationale = Nothing }
+        , { actionId = actionId 0, vote = VoteNo, rationale = Nothing }
         ]
 
     -- action 1 will be overwritten by action 0
-    , Vote withMyDrepScript [ { actionId = actionId 1, vote = VoteAbstain } ]
-    , Vote withMyDrepScript [ { actionId = actionId 0, vote = VoteAbstain } ]
+    , Vote withMyDrepScript [ { actionId = actionId 1, vote = VoteAbstain, rationale = Nothing } ]
+    , Vote withMyDrepScript [ { actionId = actionId 0, vote = VoteAbstain, rationale = Nothing } ]
 
     -- Small trick just to help the Tx builder figuring out who is paying the Tx fee
     , SendTo exAddr.me (Value.onlyLovelace Natural.zero)
@@ -482,23 +482,6 @@ prettyCred cred =
             "script:" ++ prettyBytes b
 
 
-prettyBytes b =
-    case Bytes.toText b of
-        Nothing ->
-            Bytes.toHex b
-
-        Just text ->
-            let
-                isLikelyAscii char =
-                    Char.toCode char < 128
-            in
-            if String.all isLikelyAscii text then
-                text
-
-            else
-                Bytes.toHex b
-
-
 prettyWithdrawal : ( StakeAddress, Natural ) -> String
 prettyWithdrawal ( { stakeCredential }, amount ) =
     "₳ " ++ Natural.toString amount ++ " @ stakeCred:" ++ prettyCred stakeCredential
@@ -580,15 +563,24 @@ prettyVote ( voter, votes ) =
                     "Pool: " ++ prettyBytes poolId
 
         voteStr ( actionId, procedure ) =
+            let
+                prettyRationale =
+                    case procedure.anchor of
+                        Just { url } ->
+                            " | with rationale: " ++ url
+
+                        Nothing ->
+                            ""
+            in
             case procedure.vote of
                 VoteNo ->
-                    "vote NO for: " ++ prettyActionId actionId
+                    "vote NO for: " ++ prettyActionId actionId ++ prettyRationale
 
                 VoteYes ->
-                    "vote YES for: " ++ prettyActionId actionId
+                    "vote YES for: " ++ prettyActionId actionId ++ prettyRationale
 
                 VoteAbstain ->
-                    "vote ABSTAIN for: " ++ prettyActionId actionId
+                    "vote ABSTAIN for: " ++ prettyActionId actionId ++ prettyRationale
     in
     voterStr :: List.map (indent 3 << voteStr) votes
 

@@ -4,10 +4,10 @@ module Cardano.Transaction exposing
     , WitnessSet, newWitnessSet
     , Update
     , ScriptContext, ScriptPurpose(..)
-    , Certificate(..), PoolId, GenesisHash, GenesisDelegateHash, VrfKeyHash, RewardSource(..), RewardTarget(..), MoveInstantaneousReward
-    , Relay(..), IpV4, IpV6, PoolParams, PoolMetadata, PoolMetadataHash
+    , Certificate(..), GenesisHash, GenesisDelegateHash, RewardSource(..), RewardTarget(..), MoveInstantaneousReward
     , VKeyWitness, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
     , FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, extractTotalExecCost, allInputs
+    , computeTxId, locateScriptWithHash
     , updateSignatures, hashScriptData
     , deserialize, serialize, encodeToCbor
     , decodeWitnessSet, decodeVKeyWitness, encodeVKeyWitness
@@ -25,13 +25,13 @@ module Cardano.Transaction exposing
 
 @docs ScriptContext, ScriptPurpose
 
-@docs Certificate, PoolId, GenesisHash, GenesisDelegateHash, VrfKeyHash, RewardSource, RewardTarget, MoveInstantaneousReward
-
-@docs Relay, IpV4, IpV6, PoolParams, PoolMetadata, PoolMetadataHash
+@docs Certificate, GenesisHash, GenesisDelegateHash, RewardSource, RewardTarget, MoveInstantaneousReward
 
 @docs VKeyWitness, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
 
 @docs FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, extractTotalExecCost, allInputs
+
+@docs computeTxId, locateScriptWithHash
 
 @docs updateSignatures, hashScriptData
 
@@ -47,12 +47,13 @@ import Bytes.Map exposing (BytesMap)
 import Cardano.Address as Address exposing (Credential, CredentialHash, NetworkId(..), StakeAddress, decodeCredential)
 import Cardano.AuxiliaryData as AuxiliaryData exposing (AuxiliaryData)
 import Cardano.Data as Data exposing (Data)
-import Cardano.Gov as Gov exposing (ActionId, Anchor, CostModels, Drep, ProposalProcedure, ProtocolParamUpdate, UnitInterval, Voter, VotingProcedure)
+import Cardano.Gov as Gov exposing (ActionId, Anchor, CostModels, Drep, ProposalProcedure, ProtocolParamUpdate, Voter, VotingProcedure)
 import Cardano.MultiAsset as MultiAsset exposing (MultiAsset, PolicyId)
+import Cardano.Pool as Pool exposing (VrfKeyHash)
 import Cardano.Redeemer as Redeemer exposing (ExUnitPrices, Redeemer)
-import Cardano.Script as Script exposing (NativeScript, ScriptCbor)
-import Cardano.Utils as Utils exposing (RationalNumber)
-import Cardano.Utxo as Utxo exposing (Output, OutputReference, encodeOutput, encodeOutputReference)
+import Cardano.Script as Script exposing (NativeScript, Script, ScriptCbor)
+import Cardano.Utils exposing (RationalNumber)
+import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId, encodeOutput, encodeOutputReference)
 import Cbor.Decode as D
 import Cbor.Decode.Extra as D
 import Cbor.Encode as E
@@ -270,9 +271,9 @@ Most of the time, they require signatures from specific keys.
 type Certificate
     = StakeRegistrationCert { delegator : Credential } -- 0 (will be deprecated after Conway)
     | StakeDeregistrationCert { delegator : Credential } -- 1 (will be deprecated after Conway)
-    | StakeDelegationCert { delegator : Credential, poolId : Bytes PoolId } -- 2
-    | PoolRegistrationCert PoolParams -- 3
-    | PoolRetirementCert { poolId : Bytes PoolId, epoch : Natural } -- 4
+    | StakeDelegationCert { delegator : Credential, poolId : Bytes Pool.Id } -- 2
+    | PoolRegistrationCert Pool.Params -- 3
+    | PoolRetirementCert { poolId : Bytes Pool.Id, epoch : Natural } -- 4
     | GenesisKeyDelegationCert
         -- 5 (deprecated in Conway)
         { genesisHash : Bytes GenesisHash
@@ -284,25 +285,15 @@ type Certificate
     | RegCert { delegator : Credential, deposit : Natural } -- 7 Registers stake credentials
     | UnregCert { delegator : Credential, refund : Natural } -- 8 Unregisters stake credentials
     | VoteDelegCert { delegator : Credential, drep : Drep } -- 9 Delegates votes
-    | StakeVoteDelegCert { delegator : Credential, poolId : Bytes PoolId, drep : Drep } -- 10 Delegates to a stake pool and a DRep from the same certificate
-    | StakeRegDelegCert { delegator : Credential, poolId : Bytes PoolId, deposit : Natural } -- 11 Registers stake credentials and delegates to a stake pool
+    | StakeVoteDelegCert { delegator : Credential, poolId : Bytes Pool.Id, drep : Drep } -- 10 Delegates to a stake pool and a DRep from the same certificate
+    | StakeRegDelegCert { delegator : Credential, poolId : Bytes Pool.Id, deposit : Natural } -- 11 Registers stake credentials and delegates to a stake pool
     | VoteRegDelegCert { delegator : Credential, drep : Drep, deposit : Natural } -- 12 Registers stake credentials and delegates to a DRep
-    | StakeVoteRegDelegCert { delegator : Credential, poolId : Bytes PoolId, drep : Drep, deposit : Natural } -- 13 Registers stake credentials, delegates to a pool, and to a DRep
+    | StakeVoteRegDelegCert { delegator : Credential, poolId : Bytes Pool.Id, drep : Drep, deposit : Natural } -- 13 Registers stake credentials, delegates to a pool, and to a DRep
     | AuthCommitteeHotCert { committeeColdCredential : Credential, committeeHotCredential : Credential } -- 14 Authorizes the constitutional committee hot credential
     | ResignCommitteeColdCert { committeeColdCredential : Credential, anchor : Maybe Anchor } -- 15 Resigns the constitutional committee cold credential
     | RegDrepCert { drepCredential : Credential, deposit : Natural, anchor : Maybe Anchor } -- 16 Registers DRep's credentials
     | UnregDrepCert { drepCredential : Credential, refund : Natural } -- 17 Unregisters (retires) DRep's credentials
     | UpdateDrepCert { drepCredential : Credential, anchor : Maybe Anchor } -- 18 Updates DRep's metadata anchor
-
-
-{-| Phantom type for pool ID.
-This is a 28-bytes Blake2b-224 hash.
-
--- TODO: Move Pool stuff into its own module
-
--}
-type alias PoolId =
-    CredentialHash
 
 
 {-| Phantom type for Genesis hash.
@@ -317,63 +308,6 @@ This is a 28-bytes Blake2b-224 hash.
 -}
 type GenesisDelegateHash
     = GenesisDelegateHash Never
-
-
-{-| Phantom type for VRF key hash.
-This is a 32-bytes Blake2b-256 hash.
--}
-type VrfKeyHash
-    = VrfKeyHash Never
-
-
-{-| Parameters for stake pool registration.
--}
-type alias PoolParams =
-    { operator : Bytes PoolId
-    , vrfKeyHash : Bytes VrfKeyHash
-    , pledge : Natural
-    , cost : Natural
-    , margin : UnitInterval
-    , rewardAccount : StakeAddress
-    , poolOwners : List (Bytes CredentialHash)
-    , relays : List Relay
-    , poolMetadata : Maybe PoolMetadata
-    }
-
-
-{-| A pool's relay information.
--}
-type Relay
-    = SingleHostAddr { port_ : Maybe Int, ipv4 : Maybe (Bytes IpV4), ipv6 : Maybe (Bytes IpV6) }
-    | SingleHostName { port_ : Maybe Int, dnsName : String }
-    | MultiHostName { dnsName : String }
-
-
-{-| Phantom type for 4-bytes IPV4 addresses.
--}
-type IpV4
-    = IpV4 Never
-
-
-{-| Phantom type for 16-bytes IPV6 addresses.
--}
-type IpV6
-    = IpV6 Never
-
-
-{-| A pool's metadata hash.
--}
-type alias PoolMetadata =
-    { url : String -- tstr .size (0..64)
-    , poolMetadataHash : Bytes PoolMetadataHash
-    }
-
-
-{-| Phantom type for 32-bytes pool metadata hash.
-This is a Blacke2b-256 hash.
--}
-type PoolMetadataHash
-    = PoolMetadataHash Never
 
 
 {-| Payload for [MoveInstantaneousRewardsCert].
@@ -550,6 +484,43 @@ allInputs tx =
         ]
         |> List.map (\ref -> ( ref, () ))
         |> Utxo.refDictFromList
+
+
+{-| Serialize the body and compute the Tx ID.
+-}
+computeTxId : Transaction -> Bytes TransactionId
+computeTxId tx =
+    let
+        bodyBytes =
+            E.encode (encodeTransactionBody tx.body)
+                |> Bytes.fromBytes
+    in
+    Bytes.toU8 bodyBytes
+        |> blake2b256 Nothing
+        |> Bytes.fromU8
+
+
+{-| Helper function to locate the index of a script within a list of Outputs.
+-}
+locateScriptWithHash : Bytes CredentialHash -> List Output -> Maybe ( Int, Script )
+locateScriptWithHash scriptHash outputs =
+    let
+        findScriptInOutput : Int -> Output -> Maybe ( Int, Script )
+        findScriptInOutput index output =
+            case output.referenceScript of
+                Just script ->
+                    if Script.hash script == scriptHash then
+                        Just ( index, script )
+
+                    else
+                        Nothing
+
+                Nothing ->
+                    Nothing
+    in
+    List.indexedMap findScriptInOutput outputs
+        |> List.filterMap identity
+        |> List.head
 
 
 {-| Update signatures from the witness set of the Tx.
@@ -803,17 +774,7 @@ encodeCertificate certificate =
                 ]
 
             PoolRegistrationCert poolParams ->
-                [ E.int 3
-                , Bytes.toCbor poolParams.operator
-                , Bytes.toCbor poolParams.vrfKeyHash
-                , EE.natural poolParams.pledge
-                , EE.natural poolParams.cost
-                , Utils.encodeRationalNumber poolParams.margin
-                , Address.stakeAddressToCbor poolParams.rewardAccount
-                , E.list Bytes.toCbor poolParams.poolOwners
-                , E.list encodeRelay poolParams.relays
-                , E.maybe encodePoolMetadata poolParams.poolMetadata
-                ]
+                E.int 3 :: Pool.encodeParams poolParams
 
             PoolRetirementCert { poolId, epoch } ->
                 [ E.int 4
@@ -922,37 +883,6 @@ encodeCertificate certificate =
                 , Address.credentialToCbor drepCredential
                 , E.maybe Gov.encodeAnchor anchor
                 ]
-
-
-encodeRelay : Relay -> E.Encoder
-encodeRelay relay =
-    E.list identity <|
-        case relay of
-            SingleHostAddr { port_, ipv4, ipv6 } ->
-                [ E.int 0
-                , E.maybe E.int port_
-                , E.maybe Bytes.toCbor ipv4
-                , E.maybe Bytes.toCbor ipv6
-                ]
-
-            SingleHostName { port_, dnsName } ->
-                [ E.int 1
-                , E.maybe E.int port_
-                , E.string dnsName
-                ]
-
-            MultiHostName { dnsName } ->
-                [ E.int 2
-                , E.string dnsName
-                ]
-
-
-encodePoolMetadata : PoolMetadata -> E.Encoder
-encodePoolMetadata =
-    E.tuple <|
-        E.elems
-            >> E.elem E.string .url
-            >> E.elem Bytes.toCbor .poolMetadataHash
 
 
 encodeMoveInstantaneousReward : MoveInstantaneousReward -> E.Encoder
@@ -1308,7 +1238,7 @@ decodeCertificateHelper length id =
         -- pool_registration = (3, pool_params)
         -- pool_params is of size 9
         ( 10, 3 ) ->
-            D.map PoolRegistrationCert <| D.oneOf [ decodePoolParams, D.failWith "Failed to decode pool params" ]
+            D.map PoolRegistrationCert <| D.oneOf [ Pool.decodeParams, D.failWith "Failed to decode pool params" ]
 
         -- pool_retirement = (4, pool_keyhash, epoch)
         ( 3, 4 ) ->
@@ -1431,64 +1361,6 @@ decodeCertificateHelper length id =
                     ++ ", "
                     ++ String.fromInt id
                     ++ ")"
-
-
-decodePoolParams : D.Decoder PoolParams
-decodePoolParams =
-    D.succeed PoolParams
-        |> D.keep (D.oneOf [ D.map Bytes.fromBytes D.bytes, D.failWith "Failed to decode operator" ])
-        |> D.keep (D.oneOf [ D.map Bytes.fromBytes D.bytes, D.failWith "Failed to decode vrfkeyhash" ])
-        |> D.keep (D.oneOf [ D.natural, D.failWith "Failed to decode pledge" ])
-        |> D.keep D.natural
-        |> D.keep (D.oneOf [ Utils.decodeRational, D.failWith "Failed to decode rational" ])
-        |> D.keep (D.oneOf [ Address.decodeReward, D.failWith "Failed to decode reward" ])
-        |> D.keep (D.set (D.map Bytes.fromBytes D.bytes))
-        |> D.keep (D.list <| D.oneOf [ decodeRelay, D.failWith "Failed to decode Relay" ])
-        |> D.keep (D.oneOf [ D.maybe decodePoolMetadata, D.failWith "Failed to decode pool metadata" ])
-
-
-decodeRelay : D.Decoder Relay
-decodeRelay =
-    D.length
-        |> D.andThen (\length -> D.int |> D.andThen (decodeRelayHelper length))
-
-
-decodeRelayHelper : Int -> Int -> D.Decoder Relay
-decodeRelayHelper length id =
-    case ( length, id ) of
-        -- single_host_addr = ( 0, port / null, ipv4 / null, ipv6 / null )
-        ( 4, 0 ) ->
-            D.map3 (\port_ ipv4 ipv6 -> SingleHostAddr { port_ = port_, ipv4 = ipv4, ipv6 = ipv6 })
-                (D.maybe D.int)
-                (D.maybe <| D.map Bytes.fromBytes D.bytes)
-                (D.maybe <| D.map Bytes.fromBytes D.bytes)
-
-        -- single_host_name = ( 1, port / null, dns_name )  -- An A or AAAA DNS record
-        ( 3, 1 ) ->
-            D.map2 (\port_ dns -> SingleHostName { port_ = port_, dnsName = dns })
-                (D.maybe D.int)
-                D.string
-
-        -- multi_host_name = ( 2, dns_name )  -- A SRV DNS record
-        ( 2, 2 ) ->
-            D.map (\dns -> MultiHostName { dnsName = dns })
-                D.string
-
-        _ ->
-            D.failWith <|
-                "Unknown length and id for relay ("
-                    ++ String.fromInt length
-                    ++ ", "
-                    ++ String.fromInt id
-                    ++ ")"
-
-
-decodePoolMetadata : D.Decoder PoolMetadata
-decodePoolMetadata =
-    D.tuple PoolMetadata <|
-        D.elems
-            >> D.elem D.string
-            >> D.elem (D.map Bytes.fromBytes D.bytes)
 
 
 decodeMoveInstantaneousRewards : D.Decoder MoveInstantaneousReward

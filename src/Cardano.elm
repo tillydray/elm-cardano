@@ -373,7 +373,6 @@ We can embed it directly in the transaction witness.
 
 -}
 
-import Bytes as ElmBytes
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map exposing (BytesMap)
 import Cardano.Address as Address exposing (Address(..), Credential(..), CredentialHash, NetworkId(..), StakeAddress)
@@ -1132,7 +1131,6 @@ replaceDummyScriptDataHash costModels intents ({ body } as tx) =
 Inputs are only counted once (even if present in both regular and reference inputs).
 But scripts duplicates in different inputs are counted multiple times.
 Both native and Plutus scripts are counted.
-One issue here is I don’t think we still have the original bytes representation of these.
 
 The rule is detailed in that document:
 <https://github.com/IntersectMBO/cardano-ledger/blob/master/docs/adr/2024-08-14_009-refscripts-fee-change.md#reference-scripts-total-size>
@@ -1150,7 +1148,7 @@ computeRefScriptBytes localStateUtxos references =
                     |> Maybe.andThen .referenceScript
             )
         -- extract reference script bytes size
-        |> List.map (\script -> ElmBytes.width <| E.encode (Script.toCbor script))
+        |> List.map (\scriptRef -> Bytes.width (Script.refBytes scriptRef))
         |> List.sum
 
 

@@ -51,7 +51,7 @@ import Cardano.Gov as Gov exposing (ActionId, Anchor, CostModels, Drep, Proposal
 import Cardano.MultiAsset as MultiAsset exposing (MultiAsset, PolicyId)
 import Cardano.Pool as Pool exposing (VrfKeyHash)
 import Cardano.Redeemer as Redeemer exposing (ExUnitPrices, Redeemer)
-import Cardano.Script as Script exposing (NativeScript, Script, ScriptCbor)
+import Cardano.Script as Script exposing (NativeScript, ScriptCbor)
 import Cardano.Utils exposing (RationalNumber)
 import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId, encodeOutput, encodeOutputReference)
 import Cbor.Decode as D
@@ -495,15 +495,15 @@ computeTxId tx =
 
 {-| Helper function to locate the index of a script within a list of Outputs.
 -}
-locateScriptWithHash : Bytes CredentialHash -> List Output -> Maybe ( Int, Script )
+locateScriptWithHash : Bytes CredentialHash -> List Output -> Maybe ( Int, Script.Reference )
 locateScriptWithHash scriptHash outputs =
     let
-        findScriptInOutput : Int -> Output -> Maybe ( Int, Script )
+        findScriptInOutput : Int -> Output -> Maybe ( Int, Script.Reference )
         findScriptInOutput index output =
             case output.referenceScript of
-                Just script ->
-                    if Script.hash script == scriptHash then
-                        Just ( index, script )
+                Just scriptRef ->
+                    if Script.refHash scriptRef == scriptHash then
+                        Just ( index, scriptRef )
 
                     else
                         Nothing

@@ -63,7 +63,7 @@ dog =
         { address = makeAddress "dogScriptRefAddress"
         , amount = ada.two
         , datumOption = Nothing
-        , referenceScript = Just <| Script.Native <| Script.ScriptAll [] -- dummy
+        , referenceScript = Just <| Script.refFromScript <| Script.Native <| Script.ScriptAll [] -- dummy
         }
     }
 
@@ -78,7 +78,7 @@ cat =
         { address = makeAddress "catScriptRefAddress"
         , amount = ada.two
         , datumOption = Nothing
-        , referenceScript = Just <| Script.Native <| Script.ScriptAll [] -- dummy
+        , referenceScript = Just <| Script.refFromScript <| Script.Native <| Script.ScriptAll [] -- dummy
         }
     }
 
@@ -825,6 +825,15 @@ prettyCbor toCbor x =
     E.encode (toCbor x) |> Bytes.fromBytes |> Bytes.toHex
 
 
+prettyScriptRef scriptRef =
+    case Script.refScript scriptRef of
+        Script.Native _ ->
+            "NativeScript: " ++ Bytes.toHex (Script.refBytes scriptRef)
+
+        Script.Plutus _ ->
+            "PlutusScript: " ++ Bytes.toHex (Script.refBytes scriptRef)
+
+
 prettyScript script =
     case script of
         Script.Native nativeScript ->
@@ -846,7 +855,7 @@ prettyOutput { address, amount, datumOption, referenceScript } =
     ("- " ++ prettyAddr address)
         :: ([ Just <| prettyValue amount
             , Maybe.map (List.singleton << prettyDatum) datumOption
-            , Maybe.map (List.singleton << prettyScript) referenceScript
+            , Maybe.map (List.singleton << prettyScriptRef) referenceScript
             ]
                 |> List.filterMap identity
                 |> List.concat

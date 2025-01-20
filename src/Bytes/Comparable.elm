@@ -1,7 +1,7 @@
 module Bytes.Comparable exposing
     ( Bytes
     , Any, toAny
-    , chunksOf, width, isEmpty
+    , concat, chunksOf, width, isEmpty
     , fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
     , toBytes, toHex, toText, toCbor, toU8
     )
@@ -14,7 +14,7 @@ module Bytes.Comparable exposing
 
 @docs Bytes
 @docs Any, toAny
-@docs chunksOf, width, isEmpty
+@docs concat, chunksOf, width, isEmpty
 @docs fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
 @docs toBytes, toHex, toText, toCbor, toU8
 
@@ -131,6 +131,13 @@ toCbor =
 absurd : Bytes.Bytes
 absurd =
     E.encode (E.sequence [])
+
+
+{-| Concatenate two bytes sequences.
+-}
+concat : Bytes a -> Bytes b -> Bytes c
+concat (Bytes b1) (Bytes b2) =
+    Bytes (b1 ++ b2)
 
 
 {-| Break a Bytestring into a list of chunks. Chunks are of the given width,

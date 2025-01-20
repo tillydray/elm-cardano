@@ -995,7 +995,7 @@ dog =
         { address = makeAddress "dogScriptRefAddress"
         , amount = Value.onlyLovelace (ada 5)
         , datumOption = Nothing
-        , referenceScript = Just <| Script.Native <| Script.ScriptAll [] -- dummy
+        , referenceScript = Just <| Script.refFromScript <| Script.Native <| Script.ScriptAll [] -- dummy
         }
     }
 
@@ -1010,7 +1010,7 @@ cat =
         { address = makeAddress "catScriptRefAddress"
         , amount = Value.onlyLovelace (ada 6)
         , datumOption = Nothing
-        , referenceScript = Just <| Script.Native <| Script.ScriptAll [] -- dummy
+        , referenceScript = Just <| Script.refFromScript <| Script.Native <| Script.ScriptAll [] -- dummy
         }
     }
 

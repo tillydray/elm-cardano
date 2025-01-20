@@ -1,5 +1,6 @@
 module Cardano.Script exposing
     ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, extractSigners, hash, fromBech32, toBech32
+    , Reference, refFromBytes, refFromScript, refBytes, refScript, refHash
     , toCbor, encodeNativeScript, encodePlutusScript
     , fromCbor, decodeNativeScript
     )
@@ -7,6 +8,8 @@ module Cardano.Script exposing
 {-| Script
 
 @docs Script, NativeScript, PlutusScript, PlutusVersion, ScriptCbor, extractSigners, hash, fromBech32, toBech32
+
+@docs Reference, refFromBytes, refFromScript, refBytes, refScript, refHash
 
 
 ## Encoders
@@ -31,6 +34,84 @@ import Cbor.Encode as E
 import Cbor.Encode.Extra as EE
 import Dict exposing (Dict)
 import Natural exposing (Natural)
+
+
+{-| Script Reference type, to be used to store a script into UTxOs.
+Internally, it also stores the Bytes version of the script to later have correct fees computations.
+-}
+type Reference
+    = Reference
+        { scriptHash : Bytes CredentialHash
+        , bytes : Bytes Script
+        , script : Script
+        }
+
+
+{-| Create a Script Reference from the script bytes.
+Returns Nothing if the bytes are not a valid script.
+-}
+refFromBytes : Bytes Script -> Maybe Reference
+refFromBytes bytes =
+    let
+        taggedRawScriptDecoder =
+            D.length
+                |> D.ignoreThen (D.map2 rawConcat D.raw D.raw)
+
+        rawConcat raw1 raw2 =
+            Bytes.concat (Bytes.fromBytes raw1) (Bytes.fromBytes raw2)
+
+        elmBytes =
+            Bytes.toBytes bytes
+    in
+    case ( D.decode fromCbor elmBytes, D.decode taggedRawScriptDecoder elmBytes ) of
+        ( Just script, Just taggedScriptBytes ) ->
+            Just <|
+                Reference
+                    { scriptHash =
+                        blake2b224 Nothing (Bytes.toU8 taggedScriptBytes)
+                            |> Bytes.fromU8
+                    , bytes = bytes
+                    , script = script
+                    }
+
+        _ ->
+            Nothing
+
+
+{-| Create a Script Reference from a Script (using elm-cardano encoding approach).
+-}
+refFromScript : Script -> Reference
+refFromScript script =
+    Reference
+        { scriptHash = hash script
+        , bytes = Bytes.fromBytes <| E.encode (toCbor script)
+        , script = script
+        }
+
+
+{-| Extract the Script from a script Reference.
+-}
+refScript : Reference -> Script
+refScript (Reference { script }) =
+    script
+
+
+{-| Extract the Bytes from a script Reference.
+
+If the script was encoded as would elm-cardano,
+this would be equivalent to calling `Bytes.fromBytes <| encode (toCbor script)`
+
+-}
+refBytes : Reference -> Bytes Script
+refBytes (Reference { bytes }) =
+    bytes
+
+
+{-| Extract the Script hash from the script Reference.
+-}
+refHash : Reference -> Bytes CredentialHash
+refHash (Reference { scriptHash }) =
+    scriptHash
 
 
 {-| Cardano script, either a native script or a plutus script.

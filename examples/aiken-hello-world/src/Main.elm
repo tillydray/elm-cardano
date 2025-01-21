@@ -264,13 +264,9 @@ update msg model =
                         |> Cardano.finalize ctx.localStateUtxos []
             in
             case unlockTxAttempt of
-                Ok unlockTx ->
-                    let
-                        cleanTx =
-                            Tx.updateSignatures (\_ -> Nothing) unlockTx
-                    in
-                    ( Submitting ctx Unlocking { tx = cleanTx, errors = "" }
-                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = False } cleanTx))
+                Ok { tx } ->
+                    ( Submitting ctx Unlocking { tx = tx, errors = "" }
+                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = False } tx))
                     )
 
                 Err err ->
@@ -307,13 +303,9 @@ lock ({ localStateUtxos, myKeyCred, myStakeCred, scriptAddress, loadedWallet, lo
                 |> Cardano.finalize localStateUtxos []
     in
     case lockTxAttempt of
-        Ok lockTx ->
-            let
-                cleanTx =
-                    Tx.updateSignatures (\_ -> Nothing) lockTx
-            in
-            ( Submitting ctx Locking { tx = cleanTx, errors = "" }
-            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } cleanTx))
+        Ok { tx } ->
+            ( Submitting ctx Locking { tx = tx, errors = "" }
+            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } tx))
             )
 
         Err err ->

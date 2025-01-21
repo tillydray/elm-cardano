@@ -342,13 +342,9 @@ update msg model =
                         |> Cardano.finalize ctx.localStateUtxos []
             in
             case reuseBucketTxAttempt of
-                Ok unlockTx ->
-                    let
-                        cleanTx =
-                            Tx.updateSignatures (\_ -> Nothing) unlockTx
-                    in
-                    ( Submitting ctx { tx = cleanTx, errors = "" }
-                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = False } cleanTx))
+                Ok { tx } ->
+                    ( Submitting ctx { tx = tx, errors = "" }
+                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = False } tx))
                     )
 
                 Err err ->
@@ -388,13 +384,9 @@ createBucket ({ localStateUtxos, myKeyCred, scriptAddress, loadedWallet, lockScr
                 |> Cardano.finalize localStateUtxos []
     in
     case createBucketTxAttempt of
-        Ok lockTx ->
-            let
-                cleanTx =
-                    Tx.updateSignatures (\_ -> Nothing) lockTx
-            in
-            ( Submitting ctx { tx = cleanTx, errors = "" }
-            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } cleanTx))
+        Ok { tx } ->
+            ( Submitting ctx { tx = tx, errors = "" }
+            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } tx))
             )
 
         Err err ->

@@ -3,7 +3,7 @@ module Cardano.TxBuilding exposing (suite)
 import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxFinalized, TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection exposing (Error(..))
 import Cardano.Data as Data
@@ -43,16 +43,15 @@ okTxBuilding =
             , txIntents = []
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , okTxTest "with just auto fees"
@@ -63,10 +62,19 @@ okTxBuilding =
             , txOtherInfo = []
             , txIntents = []
             }
-            (\tx ->
+            (\{ tx } ->
                 let
+                    placeholderSignedTx =
+                        { tx
+                            | witnessSet =
+                                { newWitnessSet
+                                    | vkeywitness =
+                                        Just [ { vkey = dummyBytes 32 "", signature = dummyBytes 64 "" } ]
+                                }
+                        }
+
                     feeAmount =
-                        Transaction.computeFees Transaction.defaultTxFeeParams { refScriptBytes = 0 } tx
+                        Transaction.computeFees Transaction.defaultTxFeeParams { refScriptBytes = 0 } placeholderSignedTx
                             |> (\{ txSizeFee, scriptExecFee, refScriptSizeFee } ->
                                     Natural.add txSizeFee scriptExecFee |> Natural.add refScriptSizeFee
                                )
@@ -74,17 +82,16 @@ okTxBuilding =
                     adaLeft =
                         Natural.sub (ada 2) feeAmount
                 in
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = feeAmount
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs = [ Utxo.fromLovelace testAddr.me adaLeft ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = feeAmount
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs = [ Utxo.fromLovelace testAddr.me adaLeft ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , okTxTest "with spending from, and sending to the same address"
@@ -99,17 +106,16 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs = [ Utxo.fromLovelace testAddr.me (ada 3) ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs = [ Utxo.fromLovelace testAddr.me (ada 3) ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , test "simple finalization is able to find fee source" <|
@@ -136,20 +142,19 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs =
-                                [ Utxo.fromLovelace testAddr.you (ada 1)
-                                , Utxo.fromLovelace testAddr.me (ada 2)
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs =
+                                    [ Utxo.fromLovelace testAddr.you (ada 1)
+                                    , Utxo.fromLovelace testAddr.me (ada 2)
+                                    ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , okTxTest "I pay the fees for your ada transfer to me"
@@ -167,25 +172,22 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
-                            , outputs =
-                                [ Utxo.fromLovelace testAddr.you (ada 6)
-                                , Utxo.fromLovelace testAddr.me (ada 4)
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness =
-                                Just
-                                    -- Two keys since I pay the fee, and spend your utxo
-                                    [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" }
-                                    , { vkey = dummyBytes 32 "VKEYkey-you", signature = dummyBytes 64 "SIGNATUREkey-you" }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
+                                , outputs =
+                                    [ Utxo.fromLovelace testAddr.you (ada 6)
+                                    , Utxo.fromLovelace testAddr.me (ada 4)
                                     ]
-                        }
+                            }
+                    }
+                , expectedSignatures =
+                    [ dummyCredentialHash "key-me"
+                    , dummyCredentialHash "key-you"
+                    ]
                 }
             )
         , let
@@ -210,20 +212,19 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
-                            , outputs =
-                                [ Utxo.simpleOutput testAddr.you threeCatTwoAda
-                                , Utxo.fromLovelace testAddr.me (ada 1)
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
+                                , outputs =
+                                    [ Utxo.simpleOutput testAddr.you threeCatTwoAda
+                                    , Utxo.fromLovelace testAddr.me (ada 1)
+                                    ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , let
@@ -251,20 +252,19 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
-                            , outputs =
-                                [ Utxo.simpleOutput testAddr.you threeCatMinAda
-                                , Utxo.fromLovelace testAddr.me (Natural.sub (ada 3) minAda)
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
+                                , outputs =
+                                    [ Utxo.simpleOutput testAddr.you threeCatMinAda
+                                    , Utxo.fromLovelace testAddr.me (Natural.sub (ada 3) minAda)
+                                    ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
         , okTxTest "mint 1 dog and burn 1 cat"
@@ -297,33 +297,32 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
-                            , referenceInputs = [ cat.scriptRef, dog.scriptRef ]
-                            , mint =
-                                MultiAsset.mintAdd
-                                    (MultiAsset.onlyToken dog.policyId dog.assetName Integer.one)
-                                    (MultiAsset.onlyToken cat.policyId cat.assetName Integer.negativeOne)
-                            , outputs =
-                                [ { address = testAddr.me
-                                  , amount =
-                                        Value.onlyLovelace (ada 3)
-                                            -- 1 minted dog
-                                            |> Value.add (Value.onlyToken dog.policyId dog.assetName Natural.one)
-                                            -- 2 cat left after burning 1 from the utxo with 3 cat
-                                            |> Value.add (Value.onlyToken cat.policyId cat.assetName Natural.two)
-                                  , datumOption = Nothing
-                                  , referenceScript = Nothing
-                                  }
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                        }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0, makeRef "1" 1 ]
+                                , referenceInputs = [ cat.scriptRef, dog.scriptRef ]
+                                , mint =
+                                    MultiAsset.mintAdd
+                                        (MultiAsset.onlyToken dog.policyId dog.assetName Integer.one)
+                                        (MultiAsset.onlyToken cat.policyId cat.assetName Integer.negativeOne)
+                                , outputs =
+                                    [ { address = testAddr.me
+                                      , amount =
+                                            Value.onlyLovelace (ada 3)
+                                                -- 1 minted dog
+                                                |> Value.add (Value.onlyToken dog.policyId dog.assetName Natural.one)
+                                                -- 2 cat left after burning 1 from the utxo with 3 cat
+                                                |> Value.add (Value.onlyToken cat.policyId cat.assetName Natural.two)
+                                      , datumOption = Nothing
+                                      , referenceScript = Nothing
+                                      }
+                                    ]
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
 
@@ -409,34 +408,36 @@ okTxBuilding =
                 , SendToOutput (makeLockedOutput <| Value.onlyLovelace <| ada 2)
                 ]
             }
-            (\tx ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0, utxoBeingSpent ]
-                            , requiredSigners = [ myKeyCred ]
-                            , outputs =
-                                [ makeLockedOutput <| Value.onlyLovelace <| ada 2
-                                , Utxo.fromLovelace testAddr.me (ada 5)
-                                ]
+            (\{ tx } ->
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0, utxoBeingSpent ]
+                                , requiredSigners = [ myKeyCred ]
+                                , outputs =
+                                    [ makeLockedOutput <| Value.onlyLovelace <| ada 2
+                                    , Utxo.fromLovelace testAddr.me (ada 5)
+                                    ]
 
-                            -- script stuff
-                            , scriptDataHash = tx.body.scriptDataHash
+                                -- script stuff
+                                , scriptDataHash = tx.body.scriptDataHash
 
-                            -- collateral would cost 3 ada for 2 ada fees, so return 5-3=2 ada
-                            , collateral = [ makeRef "0" 0 ]
-                            , totalCollateral = Just 3000000
-                            , collateralReturn = Just (Utxo.fromLovelace testAddr.me (ada 2))
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                            , plutusV3Script = Just [ lock.scriptBytes ]
-                            , redeemer =
-                                Uplc.evalScriptsCosts Uplc.defaultVmConfig (Utxo.refDictFromList localStateUtxos) tx
-                                    |> Result.toMaybe
-                        }
+                                -- collateral would cost 3 ada for 2 ada fees, so return 5-3=2 ada
+                                , collateral = [ makeRef "0" 0 ]
+                                , totalCollateral = Just 3000000
+                                , collateralReturn = Just (Utxo.fromLovelace testAddr.me (ada 2))
+                            }
+                        , witnessSet =
+                            { newWitnessSet
+                                | plutusV3Script = Just [ lock.scriptBytes ]
+                                , redeemer =
+                                    Uplc.evalScriptsCosts Uplc.defaultVmConfig (Utxo.refDictFromList localStateUtxos) tx
+                                        |> Result.toMaybe
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
 
@@ -462,26 +463,24 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs = [ Utxo.fromLovelace testAddr.me (ada 1) ]
-                            , certificates =
-                                [ RegCert { delegator = VKeyHash myStakeKeyHash, deposit = Natural.fromSafeInt 2000000 }
-                                , StakeDelegationCert { delegator = VKeyHash myStakeKeyHash, poolId = dummyBytes 28 "poolId" }
-                                , VoteDelegCert { delegator = VKeyHash myStakeKeyHash, drep = DrepCredential <| VKeyHash <| dummyCredentialHash "drep" }
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness =
-                                Just
-                                    [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" }
-                                    , { vkey = dummyBytes 32 "VKEYstk-me", signature = dummyBytes 64 "SIGNATUREstk-me" }
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs = [ Utxo.fromLovelace testAddr.me (ada 1) ]
+                                , certificates =
+                                    [ RegCert { delegator = VKeyHash myStakeKeyHash, deposit = Natural.fromSafeInt 2000000 }
+                                    , StakeDelegationCert { delegator = VKeyHash myStakeKeyHash, poolId = dummyBytes 28 "poolId" }
+                                    , VoteDelegCert { delegator = VKeyHash myStakeKeyHash, drep = DrepCredential <| VKeyHash <| dummyCredentialHash "drep" }
                                     ]
-                        }
+                            }
+                    }
+                , expectedSignatures =
+                    [ dummyCredentialHash "key-me"
+                    , dummyCredentialHash "stk-me"
+                    ]
                 }
             )
 
@@ -576,7 +575,7 @@ okTxBuilding =
                     { url = "hf-url", dataHash = dummyBytes 32 "hf-hash-" }
                 ]
             }
-            (\tx ->
+            (\{ tx } ->
                 let
                     makeProposalProcedure shortname govAction =
                         { deposit = ada100K
@@ -585,58 +584,60 @@ okTxBuilding =
                         , govAction = govAction
                         }
                 in
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs = [ Utxo.fromLovelace testAddr.me (ada 8) ]
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs = [ Utxo.fromLovelace testAddr.me (ada 8) ]
 
-                            -- proposals
-                            , proposalProcedures =
-                                [ makeProposalProcedure "param"
-                                    (Gov.ParameterChange
-                                        { latestEnacted = Nothing
-                                        , guardrailsPolicy = Just <| Bytes.fromHexUnchecked "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
-                                        , protocolParamUpdate = { noParamUpdate | minPoolCost = Just Natural.zero }
-                                        }
-                                    )
-                                , makeProposalProcedure "withdraw"
-                                    (Gov.TreasuryWithdrawals
-                                        { withdrawals = [ ( myStakeAddress, ada 1000000 ) ]
-                                        , guardrailsPolicy = Just <| Bytes.fromHexUnchecked "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
-                                        }
-                                    )
-                                , makeProposalProcedure "new-const"
-                                    (Gov.NewConstitution
-                                        { latestEnacted = Nothing
-                                        , constitution =
-                                            { anchor = { url = "constitution-url", dataHash = dummyBytes 32 "const-hash-" }
-                                            , scripthash = Nothing
+                                -- proposals
+                                , proposalProcedures =
+                                    [ makeProposalProcedure "param"
+                                        (Gov.ParameterChange
+                                            { latestEnacted = Nothing
+                                            , guardrailsPolicy = Just <| Bytes.fromHexUnchecked "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
+                                            , protocolParamUpdate = { noParamUpdate | minPoolCost = Just Natural.zero }
                                             }
-                                        }
-                                    )
-                                , makeProposalProcedure "no-conf" (Gov.NoConfidence { latestEnacted = Nothing })
-                                , makeProposalProcedure "info" Gov.Info
-                                , makeProposalProcedure "hf" (Gov.HardForkInitiation { latestEnacted = Nothing, protocolVersion = ( 14, 0 ) })
-                                ]
+                                        )
+                                    , makeProposalProcedure "withdraw"
+                                        (Gov.TreasuryWithdrawals
+                                            { withdrawals = [ ( myStakeAddress, ada 1000000 ) ]
+                                            , guardrailsPolicy = Just <| Bytes.fromHexUnchecked "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
+                                            }
+                                        )
+                                    , makeProposalProcedure "new-const"
+                                        (Gov.NewConstitution
+                                            { latestEnacted = Nothing
+                                            , constitution =
+                                                { anchor = { url = "constitution-url", dataHash = dummyBytes 32 "const-hash-" }
+                                                , scripthash = Nothing
+                                                }
+                                            }
+                                        )
+                                    , makeProposalProcedure "no-conf" (Gov.NoConfidence { latestEnacted = Nothing })
+                                    , makeProposalProcedure "info" Gov.Info
+                                    , makeProposalProcedure "hf" (Gov.HardForkInitiation { latestEnacted = Nothing, protocolVersion = ( 14, 0 ) })
+                                    ]
 
-                            -- script stuff
-                            , scriptDataHash = tx.body.scriptDataHash
+                                -- script stuff
+                                , scriptDataHash = tx.body.scriptDataHash
 
-                            -- collateral would cost 3 ada for 2 ada fees, so return 600010-3=600007 ada
-                            , collateral = [ makeRef "0" 0 ]
-                            , totalCollateral = Just 3000000
-                            , collateralReturn = Just (Utxo.fromLovelace testAddr.me (ada 600007))
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness = Just [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" } ]
-                            , plutusV3Script = Just [ guardrailsScriptBytes ]
-                            , redeemer =
-                                Uplc.evalScriptsCosts Uplc.defaultVmConfig (Utxo.refDictFromList localStateUtxos) tx
-                                    |> Result.toMaybe
-                        }
+                                -- collateral would cost 3 ada for 2 ada fees, so return 600010-3=600007 ada
+                                , collateral = [ makeRef "0" 0 ]
+                                , totalCollateral = Just 3000000
+                                , collateralReturn = Just (Utxo.fromLovelace testAddr.me (ada 600007))
+                            }
+                        , witnessSet =
+                            { newWitnessSet
+                                | plutusV3Script = Just [ guardrailsScriptBytes ]
+                                , redeemer =
+                                    Uplc.evalScriptsCosts Uplc.defaultVmConfig (Utxo.refDictFromList localStateUtxos) tx
+                                        |> Result.toMaybe
+                            }
+                    }
+                , expectedSignatures = [ dummyCredentialHash "key-me" ]
                 }
             )
 
@@ -698,36 +699,35 @@ okTxBuilding =
                 ]
             }
             (\_ ->
-                { newTx
-                    | body =
-                        { newBody
-                            | fee = ada 2
-                            , inputs = [ makeRef "0" 0 ]
-                            , outputs = [ Utxo.fromLovelace testAddr.me (ada 3) ]
-                            , votingProcedures =
-                                [ ( VoterDrepCred (ScriptHash drepScriptHash), [ ( actionId 0, { vote = VoteAbstain, anchor = Nothing } ) ] )
-                                , ( VoterDrepCred (VKeyHash myStakeKeyHash)
-                                  , [ ( actionId 0, { vote = VoteYes, anchor = Nothing } )
-                                    , ( actionId 1, { vote = VoteYes, anchor = Nothing } )
+                { tx =
+                    { newTx
+                        | body =
+                            { newBody
+                                | fee = ada 2
+                                , inputs = [ makeRef "0" 0 ]
+                                , outputs = [ Utxo.fromLovelace testAddr.me (ada 3) ]
+                                , votingProcedures =
+                                    [ ( VoterDrepCred (ScriptHash drepScriptHash), [ ( actionId 0, { vote = VoteAbstain, anchor = Nothing } ) ] )
+                                    , ( VoterDrepCred (VKeyHash myStakeKeyHash)
+                                      , [ ( actionId 0, { vote = VoteYes, anchor = Nothing } )
+                                        , ( actionId 1, { vote = VoteYes, anchor = Nothing } )
+                                        ]
+                                      )
+                                    , ( VoterPoolId (dummyCredentialHash "poolId")
+                                      , [ ( actionId 1, { vote = VoteNo, anchor = Nothing } )
+                                        , ( actionId 0, { vote = VoteNo, anchor = Nothing } )
+                                        ]
+                                      )
                                     ]
-                                  )
-                                , ( VoterPoolId (dummyCredentialHash "poolId")
-                                  , [ ( actionId 1, { vote = VoteNo, anchor = Nothing } )
-                                    , ( actionId 0, { vote = VoteNo, anchor = Nothing } )
-                                    ]
-                                  )
-                                ]
-                        }
-                    , witnessSet =
-                        { newWitnessSet
-                            | vkeywitness =
-                                Just
-                                    [ { vkey = dummyBytes 32 "VKEYkey-me", signature = dummyBytes 64 "SIGNATUREkey-me" }
-                                    , { vkey = dummyBytes 32 "VKEYpoolId", signature = dummyBytes 64 "SIGNATUREpoolId" }
-                                    , { vkey = dummyBytes 32 "VKEYstk-me", signature = dummyBytes 64 "SIGNATUREstk-me" }
-                                    ]
-                            , nativeScripts = Just [ drepScript ]
-                        }
+                            }
+                        , witnessSet =
+                            { newWitnessSet | nativeScripts = Just [ drepScript ] }
+                    }
+                , expectedSignatures =
+                    [ dummyCredentialHash "key-me"
+                    , dummyCredentialHash "poolId"
+                    , dummyCredentialHash "stk-me"
+                    ]
                 }
             )
         ]
@@ -743,7 +743,7 @@ okTxTest :
         , txOtherInfo : List TxOtherInfo
         , txIntents : List TxIntent
         }
-    -> (Transaction -> Transaction)
+    -> (TxFinalized -> TxFinalized)
     -> Test
 okTxTest description { govState, localStateUtxos, evalScriptsCosts, fee, txOtherInfo, txIntents } expectTransaction =
     test description <|

@@ -4,7 +4,7 @@ module Cardano exposing
     , VoteIntent, ProposalIntent, ActionProposal(..)
     , TxOtherInfo(..)
     , Fee(..)
-    , finalize, finalizeAdvanced, TxFinalizationError(..)
+    , finalize, finalizeAdvanced, TxFinalized, TxFinalizationError(..)
     , GovernanceState, emptyGovernanceState
     , updateLocalState
     , dummyBytes, dummyBytesWithPrefix, prettyBytes
@@ -366,7 +366,7 @@ We can embed it directly in the transaction witness.
 @docs VoteIntent, ProposalIntent, ActionProposal
 @docs TxOtherInfo
 @docs Fee
-@docs finalize, finalizeAdvanced, TxFinalizationError
+@docs finalize, finalizeAdvanced, TxFinalized, TxFinalizationError
 @docs GovernanceState, emptyGovernanceState
 @docs updateLocalState
 @docs dummyBytes, dummyBytesWithPrefix, prettyBytes
@@ -620,6 +620,18 @@ defaultAutoFee =
     Natural.fromSafeInt 500000
 
 
+{-| Result of the Tx finalization.
+
+The hashes of the credentials expected to provide a signature
+are provided as an additional artifact of Tx finalization.
+
+-}
+type alias TxFinalized =
+    { tx : Transaction
+    , expectedSignatures : List (Bytes CredentialHash)
+    }
+
+
 {-| Errors that may happen during Tx finalization.
 -}
 type TxFinalizationError
@@ -637,7 +649,7 @@ type TxFinalizationError
     | FailurePleaseReportToElmCardano String
 
 
-{-| Finalize a transaction before signing and sending it.
+{-| Finalize a transaction before signing and submitting it.
 
 Analyze all intents and perform the following actions:
 
@@ -659,7 +671,7 @@ finalize :
     Utxo.RefDict Output
     -> List TxOtherInfo
     -> List TxIntent
-    -> Result TxFinalizationError Transaction
+    -> Result TxFinalizationError TxFinalized
 finalize localStateUtxos txOtherInfo txIntents =
     assertNoGovProposals txIntents
         |> Result.andThen (\_ -> guessFeeSource localStateUtxos txIntents)
@@ -962,7 +974,7 @@ emptyGovernanceState =
     }
 
 
-{-| Finalize a transaction before signing and sending it.
+{-| Finalize a transaction before signing and submitting it.
 
 Analyze all intents and perform the following actions:
 
@@ -982,7 +994,7 @@ finalizeAdvanced :
     -> Fee
     -> List TxOtherInfo
     -> List TxIntent
-    -> Result TxFinalizationError Transaction
+    -> Result TxFinalizationError TxFinalized
 finalizeAdvanced { govState, localStateUtxos, coinSelectionAlgo, evalScriptsCosts, costModels } fee txOtherInfo txIntents =
     case ( processIntents govState localStateUtxos txIntents, processOtherInfo txOtherInfo ) of
         ( Err err, _ ) ->
@@ -993,7 +1005,7 @@ finalizeAdvanced { govState, localStateUtxos, coinSelectionAlgo, evalScriptsCost
 
         ( Ok processedIntents, Ok processedOtherInfo ) ->
             let
-                buildTxRound : InputsOutputs -> Fee -> Result TxFinalizationError Transaction
+                buildTxRound : InputsOutputs -> Fee -> Result TxFinalizationError TxFinalized
                 buildTxRound roundInputsOutputs roundFees =
                     let
                         ( feeAmount, feeAddresses ) =
@@ -1077,17 +1089,27 @@ finalizeAdvanced { govState, localStateUtxos, coinSelectionAlgo, evalScriptsCost
             --   - adjust redeemers
             buildTxRound noInputsOutputs fee
                 --> Result String Transaction
-                |> Result.andThen (\tx -> buildTxRound (extractInputsOutputs tx) (adjustFees tx))
+                |> Result.andThen (\{ tx } -> buildTxRound (extractInputsOutputs tx) (adjustFees tx))
                 -- Evaluate plutus script cost
-                |> Result.andThen (adjustExecutionCosts <| evalScriptsCosts localStateUtxos)
+                |> Result.andThen (\{ tx } -> (adjustExecutionCosts <| evalScriptsCosts localStateUtxos) tx)
                 -- Redo a final round of above
                 |> Result.andThen (\tx -> buildTxRound (extractInputsOutputs tx) (adjustFees tx))
-                |> Result.andThen (adjustExecutionCosts <| evalScriptsCosts localStateUtxos)
-                -- Potentially replace the dummy auxiliary data hash and script data hash
-                |> Result.map replaceDummyAuxiliaryDataHash
-                |> Result.map (replaceDummyScriptDataHash costModels processedIntents)
-                -- Finally, check if final fees are correct
-                |> Result.andThen (\tx -> checkInsufficientFee { refScriptBytes = computeRefScriptBytesForTx tx } fee tx)
+                |> Result.andThen
+                    (\{ tx, expectedSignatures } ->
+                        (adjustExecutionCosts <| evalScriptsCosts localStateUtxos) tx
+                            -- Potentially replace the dummy auxiliary data hash and script data hash
+                            |> Result.map replaceDummyAuxiliaryDataHash
+                            |> Result.map (replaceDummyScriptDataHash costModels processedIntents)
+                            -- Finally, check if final fees are correct
+                            |> Result.andThen (\finalTx -> checkInsufficientFee { refScriptBytes = computeRefScriptBytesForTx finalTx } fee finalTx)
+                            -- Very finally, clean the placeholder vkey witnesses and append the expected vkey hashes
+                            |> Result.map
+                                (\finalTx ->
+                                    { tx = Transaction.updateSignatures (always Nothing) finalTx
+                                    , expectedSignatures = expectedSignatures
+                                    }
+                                )
+                    )
 
 
 {-| Helper function to update the auxiliary data hash.
@@ -2160,7 +2182,7 @@ buildTx :
     -> ProcessedIntents
     -> ProcessedOtherInfo
     -> InputsOutputs
-    -> Transaction
+    -> TxFinalized
 buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo inputsOutputs =
     let
         -- WitnessSet ######################################
@@ -2302,17 +2324,26 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
         votesCreds =
             List.filterMap (Tuple.first >> Gov.voterKeyCred) sortedVotes
 
+        -- Find all the hashes of credentials expected to provide a signature
+        allExpectedSignatures : List (Bytes CredentialHash)
+        allExpectedSignatures =
+            [ processedIntents.requiredSigners
+            , processedIntents.expectedSigners
+            , walletCredsInInputs
+            , withdrawalsStakeCreds
+            , certificatesCreds
+            , votesCreds
+            ]
+                |> List.concat
+                |> List.map (\cred -> ( cred, {} ))
+                |> Map.fromList
+                |> Map.keys
+
         -- Create a dummy VKey Witness for each input wallet address or required signer
         -- so that fees are correctly estimated.
-        dummyVKeyWitness : List VKeyWitness
-        dummyVKeyWitness =
-            (processedIntents.requiredSigners
-                ++ processedIntents.expectedSigners
-                ++ walletCredsInInputs
-                ++ withdrawalsStakeCreds
-                ++ certificatesCreds
-                ++ votesCreds
-            )
+        placeholderVKeyWitness : List VKeyWitness
+        placeholderVKeyWitness =
+            allExpectedSignatures
                 |> List.map
                     (\cred ->
                         -- Try keeping the 28 bytes of the credential hash at the start if it’s an actual cred
@@ -2320,27 +2351,21 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
                         let
                             credStr =
                                 prettyBytes cred
-
-                            ( vkey, signature ) =
-                                if credStr == Bytes.toHex cred then
-                                    ( dummyBytesWithPrefix 32 cred
-                                    , dummyBytesWithPrefix 64 cred
-                                    )
-
-                                else
-                                    ( dummyBytes 32 <| "VKEY" ++ credStr
-                                    , dummyBytes 64 <| "SIGNATURE" ++ credStr
-                                    )
                         in
-                        ( cred, { vkey = vkey, signature = signature } )
+                        if credStr == Bytes.toHex cred then
+                            { vkey = dummyBytesWithPrefix 32 cred
+                            , signature = dummyBytesWithPrefix 64 cred
+                            }
+
+                        else
+                            { vkey = dummyBytes 32 <| "VKEY" ++ credStr
+                            , signature = dummyBytes 64 <| "SIGNATURE" ++ credStr
+                            }
                     )
-                -- Convert to a BytesMap to ensure credentials unicity
-                |> Map.fromList
-                |> Map.values
 
         txWitnessSet : WitnessSet
         txWitnessSet =
-            { vkeywitness = nothingIfEmptyList dummyVKeyWitness
+            { vkeywitness = nothingIfEmptyList placeholderVKeyWitness
             , bootstrapWitness = Nothing
             , plutusData = nothingIfEmptyList datumWitnessValues
             , nativeScripts = nothingIfEmptyList nativeScripts
@@ -2443,10 +2468,13 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
             , treasuryDonation = Nothing -- TODO treasuryDonation
             }
     in
-    { body = txBody
-    , witnessSet = txWitnessSet
-    , isValid = True
-    , auxiliaryData = txAuxData
+    { tx =
+        { body = txBody
+        , witnessSet = txWitnessSet
+        , isValid = True
+        , auxiliaryData = txAuxData
+        }
+    , expectedSignatures = allExpectedSignatures
     }
 
 

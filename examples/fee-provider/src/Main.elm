@@ -413,16 +413,12 @@ update msg model =
                             []
             in
             case unlockTxAttempt of
-                Ok unlockTx ->
-                    let
-                        cleanTx =
-                            Transaction.updateSignatures (\_ -> Nothing) unlockTx
-                    in
-                    ( FeeProviderSigning ctx { tx = cleanTx, errors = "" }
+                Ok { tx } ->
+                    ( FeeProviderSigning ctx { tx = tx, errors = "" }
                     , toExternalApp
                         (JE.object
                             [ ( "requestType", JE.string "ask-signature" )
-                            , ( "tx", JE.string <| Bytes.toHex <| Transaction.serialize cleanTx )
+                            , ( "tx", JE.string <| Bytes.toHex <| Transaction.serialize tx )
                             ]
                         )
                     )
@@ -466,13 +462,9 @@ lock ({ localStateUtxos, myKeyCred, myStakeKeyHash, scriptAddress, loadedWallet,
                 |> Cardano.finalize localStateUtxos []
     in
     case lockTxAttempt of
-        Ok lockTx ->
-            let
-                cleanTx =
-                    Transaction.updateSignatures (\_ -> Nothing) lockTx
-            in
-            ( Submitting ctx Locking { tx = cleanTx, errors = "" }
-            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } cleanTx))
+        Ok { tx } ->
+            ( Submitting ctx Locking { tx = tx, errors = "" }
+            , toWallet (Cip30.encodeRequest (Cip30.signTx loadedWallet.wallet { partialSign = False } tx))
             )
 
         Err err ->

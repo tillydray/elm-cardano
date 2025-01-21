@@ -446,15 +446,10 @@ update msg model =
                             []
             in
             case regDRepTxAttempt of
-                Ok regTx ->
-                    let
-                        cleanTx =
-                            Transaction.updateSignatures (\_ -> Nothing) regTx
-                                |> Debug.log "cleanTx"
-                    in
-                    ( Submitting context RegisteringDRep { tx = cleanTx, errors = "" }
+                Ok { tx } ->
+                    ( Submitting context RegisteringDRep { tx = tx, errors = "" }
                       -- partialSign = False -- Full sign failure with Eternl
-                    , toWallet (Cip30.encodeRequest (Cip30.signTx w.wallet { partialSign = True } cleanTx))
+                    , toWallet (Cip30.encodeRequest (Cip30.signTx w.wallet { partialSign = True } tx))
                     )
 
                 Err err ->
@@ -496,16 +491,12 @@ update msg model =
                             []
             in
             case voteTxAttempt of
-                Ok voteTx ->
-                    let
-                        cleanTx =
-                            Transaction.updateSignatures (\_ -> Nothing) voteTx
-                    in
-                    ( FeeProviderSigning ctx { tx = cleanTx, errors = "" }
+                Ok { tx } ->
+                    ( FeeProviderSigning ctx { tx = tx, errors = "" }
                     , toExternalApp
                         (JE.object
                             [ ( "requestType", JE.string "ask-signature" )
-                            , ( "tx", JE.string <| Bytes.toHex <| Transaction.serialize cleanTx )
+                            , ( "tx", JE.string <| Bytes.toHex <| Transaction.serialize tx )
                             ]
                         )
                     )
@@ -548,14 +539,10 @@ update msg model =
                             []
             in
             case unregDRepTxAttempt of
-                Ok unregTx ->
-                    let
-                        cleanTx =
-                            Transaction.updateSignatures (\_ -> Nothing) unregTx
-                    in
-                    ( Submitting ctx UnregisteringDRep { tx = cleanTx, errors = "" }
+                Ok { tx } ->
+                    ( Submitting ctx UnregisteringDRep { tx = tx, errors = "" }
                       -- partialSign = False -- Full sign error with eternl
-                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = True } cleanTx))
+                    , toWallet (Cip30.encodeRequest (Cip30.signTx ctx.loadedWallet.wallet { partialSign = True } tx))
                     )
 
                 Err err ->

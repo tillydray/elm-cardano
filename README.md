@@ -121,3 +121,34 @@ cd examples/txbuild && npx elm-watch hot
 
 Many thanks to all people who contributed code and ideas to elm-cardano.
 Many thanks to the person (they know who they are) who contributed the logo.
+
+## Maintainer notes
+
+Don’t forget to update the version tag in the quickstart instructions
+
+Cargo-dist TLDR:
+```sh
+git commit -am "release: 0.2.0"
+git tag "v0.2.0"
+git push
+git push --tags
+```
+
+Then download, extract and publish the npm package from the GitHub release page.
+```sh
+# Inside the extracted package/ dir
+npm publish
+```
+
+Finally, don’t forget to update the docs published in the dedicated
+```sh
+cd frontend/
+mkdir temp/
+elm make --docs temp/docs.json
+git co elm-doc-preview
+cp temp/docs.json docs.json
+git ci -a --amend
+git push --force
+git co main
+rm -r temp/
+```

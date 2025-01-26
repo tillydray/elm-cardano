@@ -11,7 +11,6 @@ module Cardano.TxExamples exposing
 
 -}
 
-import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
 import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalize, finalizeAdvanced, prettyBytes)
@@ -356,13 +355,8 @@ example6 _ =
         drepScript =
             ScriptAll []
 
-        drepScriptCbor =
-            E.encode (Script.encodeNativeScript drepScript)
-                |> Bytes.fromBytes
-
         drepScriptHash =
-            blake2b224 Nothing (Bytes.toU8 drepScriptCbor)
-                |> Bytes.fromU8
+            Script.hash (Script.Native drepScript)
 
         -- Define different voters
         withMyDrepCred =

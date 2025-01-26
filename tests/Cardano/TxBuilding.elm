@@ -1,6 +1,5 @@
 module Cardano.TxBuilding exposing (suite)
 
-import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
 import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxFinalized, TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
@@ -16,7 +15,6 @@ import Cardano.Transaction as Transaction exposing (Certificate(..), Transaction
 import Cardano.Uplc as Uplc
 import Cardano.Utxo as Utxo exposing (DatumOption(..), Output, OutputReference)
 import Cardano.Value as Value exposing (Value)
-import Cbor.Encode as E
 import Expect exposing (Expectation)
 import Integer
 import Natural exposing (Natural)
@@ -657,13 +655,8 @@ okTxBuilding =
             drepScript =
                 ScriptAll []
 
-            drepScriptCbor =
-                E.encode (Script.encodeNativeScript drepScript)
-                    |> Bytes.fromBytes
-
             drepScriptHash =
-                blake2b224 Nothing (Bytes.toU8 drepScriptCbor)
-                    |> Bytes.fromU8
+                Script.hash (Script.Native drepScript)
 
             -- Define different voters
             withMyDrepCred =

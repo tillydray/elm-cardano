@@ -5,7 +5,7 @@ module Cardano.Transaction exposing
     , Update
     , ScriptContext, ScriptPurpose(..)
     , Certificate(..), GenesisHash, GenesisDelegateHash, RewardSource(..), RewardTarget(..), MoveInstantaneousReward
-    , VKeyWitness, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
+    , VKeyWitness, hashVKey, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
     , FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, allInputs
     , computeTxId, locateScriptWithHash
     , updateSignatures, hashScriptData
@@ -27,7 +27,7 @@ module Cardano.Transaction exposing
 
 @docs Certificate, GenesisHash, GenesisDelegateHash, RewardSource, RewardTarget, MoveInstantaneousReward
 
-@docs VKeyWitness, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
+@docs VKeyWitness, hashVKey, BootstrapWitness, Ed25519PublicKey, Ed25519Signature, BootstrapWitnessChainCode, BootstrapWitnessAttributes
 
 @docs FeeParameters, RefScriptFeeParameters, defaultTxFeeParams, computeFees, allInputs
 
@@ -41,7 +41,6 @@ module Cardano.Transaction exposing
 
 -}
 
-import Blake2b exposing (blake2b256)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map exposing (BytesMap)
 import Cardano.Address as Address exposing (Credential, CredentialHash, NetworkId(..), StakeAddress, decodeCredential)
@@ -196,6 +195,13 @@ type alias VKeyWitness =
     { vkey : Bytes Ed25519PublicKey -- 0
     , signature : Bytes Ed25519Signature -- 1
     }
+
+
+{-| Compute the 28-bytes Blake2b hash of a public key.
+-}
+hashVKey : Bytes Ed25519PublicKey -> Bytes CredentialHash
+hashVKey =
+    Bytes.blake2b224
 
 
 {-| Bootstrap witness
@@ -483,14 +489,9 @@ allInputs tx =
 -}
 computeTxId : Transaction -> Bytes TransactionId
 computeTxId tx =
-    let
-        bodyBytes =
-            E.encode (encodeTransactionBody tx.body)
-                |> Bytes.fromBytes
-    in
-    Bytes.toU8 bodyBytes
-        |> blake2b256 Nothing
-        |> Bytes.fromU8
+    E.encode (encodeTransactionBody tx.body)
+        |> Bytes.fromBytes
+        |> Bytes.blake2b256
 
 
 {-| Helper function to locate the index of a script within a list of Outputs.
@@ -548,9 +549,7 @@ hashScriptData costModels tx =
     case tx.witnessSet.redeemer of
         Nothing ->
             Bytes.fromHexUnchecked ("80" ++ datumsHex ++ "a0")
-                |> Bytes.toU8
-                |> blake2b256 Nothing
-                |> Bytes.fromU8
+                |> Bytes.blake2b256
 
         Just redeemers ->
             let
@@ -580,9 +579,7 @@ hashScriptData costModels tx =
                         |> Bytes.toHex
             in
             Bytes.fromHexUnchecked (redeemersHex ++ datumsHex ++ languageViewsHex)
-                |> Bytes.toU8
-                |> blake2b256 Nothing
-                |> Bytes.fromU8
+                |> Bytes.blake2b256
 
 
 

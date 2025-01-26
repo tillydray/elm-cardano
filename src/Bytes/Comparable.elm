@@ -4,6 +4,7 @@ module Bytes.Comparable exposing
     , concat, chunksOf, width, isEmpty
     , fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
     , toBytes, toHex, toText, toCbor, toU8
+    , blake2b224, blake2b256, blake2b512
     )
 
 {-| Comparable Bytes
@@ -17,9 +18,11 @@ module Bytes.Comparable exposing
 @docs concat, chunksOf, width, isEmpty
 @docs fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
 @docs toBytes, toHex, toText, toCbor, toU8
+@docs blake2b224, blake2b256, blake2b512
 
 -}
 
+import Blake2b
 import Bytes
 import Bytes.Decode as D
 import Bytes.Encode as E
@@ -187,3 +190,31 @@ splitStep ( size, u8s ) =
 
     else
         D.map (\u8 -> D.Loop ( size - 1, u8 :: u8s )) D.unsignedInt8
+
+
+{-| Compute the Blake2b-224 hash (28 bytes) of the given bytes.
+-}
+blake2b224 : Bytes a -> Bytes b
+blake2b224 bs =
+    hash (Blake2b.blake2b224 Nothing) bs
+
+
+{-| Compute the Blake2b-256 hash (32 bytes) of the given bytes.
+-}
+blake2b256 : Bytes a -> Bytes b
+blake2b256 bs =
+    hash (Blake2b.blake2b256 Nothing) bs
+
+
+{-| Compute the Blake2b-512 hash (64 bytes) of the given bytes.
+-}
+blake2b512 : Bytes a -> Bytes b
+blake2b512 bs =
+    hash (Blake2b.blake2b512 Nothing) bs
+
+
+{-| Helper parameterized hash function.
+-}
+hash : (List Int -> List Int) -> Bytes a -> Bytes b
+hash hashFunction bs =
+    fromU8 <| hashFunction <| toU8 bs

@@ -25,7 +25,6 @@ module Cardano.Script exposing
 
 import Bech32.Decode as Bech32
 import Bech32.Encode as Bech32
-import Blake2b exposing (blake2b224)
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Cardano.Address exposing (CredentialHash)
 import Cbor.Decode as D
@@ -67,9 +66,7 @@ refFromBytes bytes =
         ( Just script, Just taggedScriptBytes ) ->
             Just <|
                 Reference
-                    { scriptHash =
-                        blake2b224 Nothing (Bytes.toU8 taggedScriptBytes)
-                            |> Bytes.fromU8
+                    { scriptHash = Bytes.blake2b224 taggedScriptBytes
                     , bytes = bytes
                     , script = script
                     }
@@ -201,14 +198,10 @@ This is not valid CBOR, just concatenation of tag|scriptBytes.
 -}
 hash : Script -> Bytes CredentialHash
 hash script =
-    let
-        taggedScriptBytes =
-            taggedEncoder script
-                |> E.encode
-                |> Bytes.fromBytes
-    in
-    blake2b224 Nothing (Bytes.toU8 taggedScriptBytes)
-        |> Bytes.fromU8
+    taggedEncoder script
+        |> E.encode
+        |> Bytes.fromBytes
+        |> Bytes.blake2b224
 
 
 {-| Convert a script hash to its Bech32 representation.

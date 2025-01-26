@@ -2,7 +2,7 @@ module Cardano.Script exposing
     ( Script(..), NativeScript(..), PlutusScript, PlutusVersion(..), ScriptCbor, extractSigners, hash, fromBech32, toBech32
     , Reference, refFromBytes, refFromScript, refBytes, refScript, refHash
     , toCbor, encodeNativeScript, encodePlutusScript
-    , fromCbor, decodeNativeScript
+    , fromCbor, decodeNativeScript, jsonDecodeNativeScript
     )
 
 {-| Script
@@ -19,7 +19,7 @@ module Cardano.Script exposing
 
 ## Decoders
 
-@docs fromCbor, decodeNativeScript
+@docs fromCbor, decodeNativeScript, jsonDecodeNativeScript
 
 -}
 
@@ -32,6 +32,7 @@ import Cbor.Decode.Extra as D
 import Cbor.Encode as E
 import Cbor.Encode.Extra as EE
 import Dict exposing (Dict)
+import Json.Decode as JD
 import Natural exposing (Natural)
 
 
@@ -375,4 +376,64 @@ decodeNativeScript =
 
                     _ ->
                         D.fail
+            )
+
+
+{-| Decode NativeScript from its JSON node specification.
+
+<https://github.com/IntersectMBO/cardano-node/blob/40ebadd4b70530f89fe76513c108a1a356ad16ea/doc/reference/simple-scripts.md#type-after>
+
+-}
+jsonDecodeNativeScript : JD.Decoder NativeScript
+jsonDecodeNativeScript =
+    let
+        sig =
+            JD.field "keyHash" JD.string
+                |> JD.andThen
+                    (\hashHex ->
+                        case Bytes.fromHex hashHex of
+                            Nothing ->
+                                JD.fail <| "Invalid key hash: " ++ hashHex
+
+                            Just scriptHash ->
+                                JD.succeed <| ScriptPubkey scriptHash
+                    )
+    in
+    JD.field "type" JD.string
+        |> JD.andThen
+            (\nodeType ->
+                case nodeType of
+                    "sig" ->
+                        sig
+
+                    "all" ->
+                        JD.field "scripts" <|
+                            JD.map ScriptAll <|
+                                JD.lazy (\_ -> JD.list jsonDecodeNativeScript)
+
+                    "any" ->
+                        JD.field "scripts" <|
+                            JD.map ScriptAny <|
+                                JD.list (JD.lazy (\_ -> jsonDecodeNativeScript))
+
+                    "atLeast" ->
+                        JD.map2 ScriptNofK
+                            (JD.field "required" JD.int)
+                            (JD.field "scripts" <| JD.list (JD.lazy (\_ -> jsonDecodeNativeScript)))
+
+                    -- TODO: is this actually the reverse of the CBOR???
+                    "after" ->
+                        JD.field "slot" JD.int
+                            -- TODO: can we fix this to also be correct with numbers bigger than 2^53?
+                            -- Unlikely error considering slots are in seconds (not milliseconds)?
+                            |> JD.map (InvalidBefore << Natural.fromSafeInt)
+
+                    "before" ->
+                        JD.field "slot" JD.int
+                            -- TODO: can we fix this to also be correct with numbers bigger than 2^53?
+                            -- Unlikely error considering slots are in seconds (not milliseconds)?
+                            |> JD.map (InvalidHereafter << Natural.fromSafeInt)
+
+                    _ ->
+                        JD.fail <| "Unknown type: " ++ nodeType
             )

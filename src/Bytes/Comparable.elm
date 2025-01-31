@@ -5,6 +5,7 @@ module Bytes.Comparable exposing
     , fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
     , toBytes, toHex, toText, toCbor, toU8
     , blake2b224, blake2b256, blake2b512
+    , dummy, dummyWithPrefix, pretty
     )
 
 {-| Comparable Bytes
@@ -19,6 +20,7 @@ module Bytes.Comparable exposing
 @docs fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
 @docs toBytes, toHex, toText, toCbor, toU8
 @docs blake2b224, blake2b256, blake2b512
+@docs dummy, dummyWithPrefix, pretty
 
 -}
 
@@ -218,3 +220,53 @@ blake2b512 bs =
 hash : (List Int -> List Int) -> Bytes a -> Bytes b
 hash hashFunction bs =
     fromU8 <| hashFunction <| toU8 bs
+
+
+{-| Helper function to make up some bytes of a given length,
+starting by the given text when decoded as text.
+-}
+dummy : Int -> String -> Bytes a
+dummy length prefix =
+    let
+        zeroSuffix =
+            String.repeat (2 * length) "0"
+    in
+    fromText (prefix ++ zeroSuffix)
+        |> toHex
+        |> String.slice 0 (2 * length)
+        |> fromHexUnchecked
+
+
+{-| Helper function to make up some bytes of a given length,
+starting with the provided bytes.
+-}
+dummyWithPrefix : Int -> Bytes a -> Bytes b
+dummyWithPrefix length bytesPrefix =
+    let
+        zeroSuffix =
+            String.repeat (2 * length) "0"
+    in
+    (toHex bytesPrefix ++ zeroSuffix)
+        |> String.slice 0 (2 * length)
+        |> fromHexUnchecked
+
+
+{-| Helper function that convert bytes to either Text if it looks like text,
+or its Hex representation otherwise.
+-}
+pretty : Bytes a -> String
+pretty b =
+    case toText b of
+        Nothing ->
+            toHex b
+
+        Just text ->
+            let
+                isLikelyAscii char =
+                    Char.toCode char < 128
+            in
+            if String.all isLikelyAscii text then
+                text
+
+            else
+                toHex b

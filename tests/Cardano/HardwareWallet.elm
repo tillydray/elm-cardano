@@ -2,7 +2,7 @@ module Cardano.HardwareWallet exposing (suite)
 
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map exposing (BytesMap)
-import Cardano exposing (SpendSource(..), TxIntent(..), WitnessSource(..), dummyBytes, finalize)
+import Cardano exposing (SpendSource(..), TxIntent(..), WitnessSource(..), finalize)
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.Data as Data
 import Cardano.Script exposing (PlutusScript, PlutusVersion(..))
@@ -293,7 +293,7 @@ bytesMap keyValues =
 
 dummyCredentialHash : String -> Bytes CredentialHash
 dummyCredentialHash str =
-    dummyBytes 28 str
+    Bytes.dummy 28 str
 
 
 makeWalletAddress : String -> Address
@@ -307,7 +307,7 @@ makeWalletAddress name =
 
 makeRef : String -> Int -> OutputReference
 makeRef id index =
-    { transactionId = dummyBytes 32 id
+    { transactionId = Bytes.dummy 32 id
     , outputIndex = index
     }
 

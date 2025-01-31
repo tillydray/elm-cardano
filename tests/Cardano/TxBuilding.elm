@@ -2,7 +2,7 @@ module Cardano.TxBuilding exposing (suite)
 
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map as Map
-import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxFinalized, TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), dummyBytes, finalizeAdvanced)
+import Cardano exposing (ActionProposal(..), CertificateIntent(..), CredentialWitness(..), Fee(..), GovernanceState, ScriptWitness(..), SpendSource(..), TxFinalizationError(..), TxFinalized, TxIntent(..), TxOtherInfo(..), VoterWitness(..), WitnessSource(..), finalizeAdvanced)
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.CoinSelection as CoinSelection exposing (Error(..))
 import Cardano.Data as Data
@@ -67,7 +67,7 @@ okTxBuilding =
                             | witnessSet =
                                 { newWitnessSet
                                     | vkeywitness =
-                                        Just [ { vkey = dummyBytes 32 "", signature = dummyBytes 64 "" } ]
+                                        Just [ { vkey = Bytes.dummy 32 "", signature = Bytes.dummy 64 "" } ]
                                 }
                         }
 
@@ -456,7 +456,7 @@ okTxBuilding =
             , txIntents =
                 [ Spend <| FromWallet testAddr.me <| Value.onlyLovelace (ada 2) -- 2 ada for the registration deposit
                 , IssueCertificate <| RegisterStake { delegator = WithKey myStakeKeyHash, deposit = ada 2 }
-                , IssueCertificate <| DelegateStake { delegator = WithKey myStakeKeyHash, poolId = dummyBytes 28 "poolId" }
+                , IssueCertificate <| DelegateStake { delegator = WithKey myStakeKeyHash, poolId = Bytes.dummy 28 "poolId" }
                 , IssueCertificate <| DelegateVotes { delegator = WithKey myStakeKeyHash, drep = VKeyHash <| dummyCredentialHash "drep" }
                 ]
             }
@@ -470,7 +470,7 @@ okTxBuilding =
                                 , outputs = [ Utxo.fromLovelace testAddr.me (ada 1) ]
                                 , certificates =
                                     [ RegCert { delegator = VKeyHash myStakeKeyHash, deposit = Natural.fromSafeInt 2000000 }
-                                    , StakeDelegationCert { delegator = VKeyHash myStakeKeyHash, poolId = dummyBytes 28 "poolId" }
+                                    , StakeDelegationCert { delegator = VKeyHash myStakeKeyHash, poolId = Bytes.dummy 28 "poolId" }
                                     , VoteDelegCert { delegator = VKeyHash myStakeKeyHash, drep = DrepCredential <| VKeyHash <| dummyCredentialHash "drep" }
                                     ]
                             }
@@ -544,33 +544,33 @@ okTxBuilding =
                 -- Change minPoolCost to 0
                 , propose
                     (ParameterChange { noParamUpdate | minPoolCost = Just Natural.zero })
-                    { url = "param-url", dataHash = dummyBytes 32 "param-hash-" }
+                    { url = "param-url", dataHash = Bytes.dummy 32 "param-hash-" }
 
                 -- Withdraw 1M ada from the treasury
                 , propose
                     (TreasuryWithdrawals [ { destination = myStakeAddress, amount = ada 1000000 } ])
-                    { url = "withdraw-url", dataHash = dummyBytes 32 "withdraw-hash-" }
+                    { url = "withdraw-url", dataHash = Bytes.dummy 32 "withdraw-hash-" }
 
                 -- Change the constitution to not have a guardrails script anymore
                 , propose
                     (NewConstitution
-                        { anchor = { url = "constitution-url", dataHash = dummyBytes 32 "const-hash-" }
+                        { anchor = { url = "constitution-url", dataHash = Bytes.dummy 32 "const-hash-" }
                         , scripthash = Nothing
                         }
                     )
-                    { url = "new-const-url", dataHash = dummyBytes 32 "new-const-hash-" }
+                    { url = "new-const-url", dataHash = Bytes.dummy 32 "new-const-hash-" }
 
                 -- Change to a state of No Confidence
                 , propose NoConfidence
-                    { url = "no-conf-url", dataHash = dummyBytes 32 "no-conf-hash-" }
+                    { url = "no-conf-url", dataHash = Bytes.dummy 32 "no-conf-hash-" }
 
                 -- Ask an info poll about pineapple pizza
                 , propose Info
-                    { url = "info-url", dataHash = dummyBytes 32 "info-hash-" }
+                    { url = "info-url", dataHash = Bytes.dummy 32 "info-hash-" }
 
                 -- Finally, suggest a hard fork
                 , propose (HardForkInitiation ( 14, 0 ))
-                    { url = "hf-url", dataHash = dummyBytes 32 "hf-hash-" }
+                    { url = "hf-url", dataHash = Bytes.dummy 32 "hf-hash-" }
                 ]
             }
             (\{ tx } ->
@@ -578,7 +578,7 @@ okTxBuilding =
                     makeProposalProcedure shortname govAction =
                         { deposit = ada100K
                         , depositReturnAccount = myStakeAddress
-                        , anchor = { url = shortname ++ "-url", dataHash = dummyBytes 32 (shortname ++ "-hash-") }
+                        , anchor = { url = shortname ++ "-url", dataHash = Bytes.dummy 32 (shortname ++ "-hash-") }
                         , govAction = govAction
                         }
                 in
@@ -609,7 +609,7 @@ okTxBuilding =
                                         (Gov.NewConstitution
                                             { latestEnacted = Nothing
                                             , constitution =
-                                                { anchor = { url = "constitution-url", dataHash = dummyBytes 32 "const-hash-" }
+                                                { anchor = { url = "constitution-url", dataHash = Bytes.dummy 32 "const-hash-" }
                                                 , scripthash = Nothing
                                                 }
                                             }
@@ -647,7 +647,7 @@ okTxBuilding =
 
             -- Action being voted on
             actionId index =
-                { transactionId = dummyBytes 32 "actionTx"
+                { transactionId = Bytes.dummy 32 "actionTx"
                 , govActionIndex = index
                 }
 
@@ -1026,7 +1026,7 @@ autoFee =
 
 dummyCredentialHash : String -> Bytes CredentialHash
 dummyCredentialHash str =
-    dummyBytes 28 str
+    Bytes.dummy 28 str
 
 
 makeWalletAddress : String -> Address
@@ -1045,7 +1045,7 @@ makeAddress name =
 
 makeRef : String -> Int -> OutputReference
 makeRef id index =
-    { transactionId = dummyBytes 32 id
+    { transactionId = Bytes.dummy 32 id
     , outputIndex = index
     }
 

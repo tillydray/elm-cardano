@@ -7,7 +7,6 @@ module Cardano exposing
     , finalize, finalizeAdvanced, TxFinalized, TxFinalizationError(..)
     , GovernanceState, emptyGovernanceState
     , updateLocalState
-    , dummyBytes, dummyBytesWithPrefix, prettyBytes
     )
 
 {-| Cardano stuff
@@ -369,7 +368,6 @@ We can embed it directly in the transaction witness.
 @docs finalize, finalizeAdvanced, TxFinalized, TxFinalizationError
 @docs GovernanceState, emptyGovernanceState
 @docs updateLocalState
-@docs dummyBytes, dummyBytesWithPrefix, prettyBytes
 
 -}
 
@@ -2350,16 +2348,16 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
                         -- or prefix with VKEY and SIGNATURE for fake creds in textual shape (used in tests).
                         let
                             credStr =
-                                prettyBytes cred
+                                Bytes.pretty cred
                         in
                         if credStr == Bytes.toHex cred then
-                            { vkey = dummyBytesWithPrefix 32 cred
-                            , signature = dummyBytesWithPrefix 64 cred
+                            { vkey = Bytes.dummyWithPrefix 32 cred
+                            , signature = Bytes.dummyWithPrefix 64 cred
                             }
 
                         else
-                            { vkey = dummyBytes 32 <| "VKEY" ++ credStr
-                            , signature = dummyBytes 64 <| "SIGNATURE" ++ credStr
+                            { vkey = Bytes.dummy 32 <| "VKEY" ++ credStr
+                            , signature = Bytes.dummy 64 <| "SIGNATURE" ++ credStr
                             }
                     )
 
@@ -2445,7 +2443,7 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
                     Nothing
 
                 else
-                    Just (dummyBytes 32 "AuxDataHash")
+                    Just (Bytes.dummy 32 "AuxDataHash")
             , validityIntervalStart = Maybe.map .start otherInfo.timeValidityRange
             , mint = processedIntents.totalMinted
             , scriptDataHash =
@@ -2453,7 +2451,7 @@ buildTx localStateUtxos feeAmount collateralSelection processedIntents otherInfo
                     Nothing
 
                 else
-                    Just (dummyBytes 32 "ScriptDataHash")
+                    Just (Bytes.dummy 32 "ScriptDataHash")
             , collateral = List.map Tuple.first collateralSelection.selectedUtxos
             , requiredSigners = processedIntents.requiredSigners
             , networkId = Nothing -- not mandatory
@@ -2568,56 +2566,6 @@ updateLocalState txId tx oldState =
     , spent = List.filterMap (\ref -> Dict.Any.get ref oldState |> Maybe.map (Tuple.pair ref)) tx.body.inputs
     , created = createdUtxos
     }
-
-
-{-| Helper function to make up some bytes of a given length,
-starting by the given text when decoded as text.
--}
-dummyBytes : Int -> String -> Bytes a
-dummyBytes length prefix =
-    let
-        zeroSuffix =
-            String.repeat (2 * length) "0"
-    in
-    Bytes.fromText (prefix ++ zeroSuffix)
-        |> Bytes.toHex
-        |> String.slice 0 (2 * length)
-        |> Bytes.fromHexUnchecked
-
-
-{-| Helper function to make up some bytes of a given length,
-starting with the provided bytes.
--}
-dummyBytesWithPrefix : Int -> Bytes a -> Bytes b
-dummyBytesWithPrefix length bytesPrefix =
-    let
-        zeroSuffix =
-            String.repeat (2 * length) "0"
-    in
-    (Bytes.toHex bytesPrefix ++ zeroSuffix)
-        |> String.slice 0 (2 * length)
-        |> Bytes.fromHexUnchecked
-
-
-{-| Helper function that convert bytes to either Text if it looks like text,
-or its Hex representation otherwise.
--}
-prettyBytes : Bytes a -> String
-prettyBytes b =
-    case Bytes.toText b of
-        Nothing ->
-            Bytes.toHex b
-
-        Just text ->
-            let
-                isLikelyAscii char =
-                    Char.toCode char < 128
-            in
-            if String.all isLikelyAscii text then
-                text
-
-            else
-                Bytes.toHex b
 
 
 witnessSourceToResult : WitnessSource a -> Result a OutputReference

@@ -2,7 +2,7 @@ port module Main exposing (main)
 
 import Browser
 import Bytes.Comparable as Bytes exposing (Bytes)
-import Cardano exposing (CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), VoterWitness(..), WitnessSource(..), dummyBytes)
+import Cardano exposing (CertificateIntent(..), CredentialWitness(..), Fee(..), ScriptWitness(..), SpendSource(..), TxIntent(..), VoterWitness(..), WitnessSource(..))
 import Cardano.Address as Address exposing (Address, Credential(..), CredentialHash, NetworkId(..), StakeCredential(..))
 import Cardano.Cip30 as Cip30
 import Cardano.CoinSelection as CoinSelection
@@ -359,7 +359,7 @@ update msg model =
                 -- Extract both parts from our wallet address
                 ( myKeyCred, myStakeCred ) =
                     ( Address.extractPubKeyHash w.changeAddress
-                        |> Maybe.withDefault (dummyBytes 28 "ERROR")
+                        |> Maybe.withDefault (Bytes.dummy 28 "ERROR")
                     , Address.extractStakeCredential w.changeAddress
                     )
 
@@ -380,7 +380,7 @@ update msg model =
                     , protocolParams = protocolParams
                     }
             in
-            ( TxSubmitted context RegisteringDRep { txId = Cardano.dummyBytes 32 "", errors = "" }
+            ( TxSubmitted context RegisteringDRep { txId = Bytes.dummy 32 "", errors = "" }
             , Cmd.none
             )
 
@@ -389,7 +389,7 @@ update msg model =
                 -- Extract both parts from our wallet address
                 ( myKeyCred, myStakeCred ) =
                     ( Address.extractPubKeyHash w.changeAddress
-                        |> Maybe.withDefault (dummyBytes 28 "ERROR")
+                        |> Maybe.withDefault (Bytes.dummy 28 "ERROR")
                     , Address.extractStakeCredential w.changeAddress
                     )
 

@@ -46,7 +46,7 @@ module Cardano.Transaction exposing
 
 import Bytes.Comparable as Bytes exposing (Bytes)
 import Bytes.Map exposing (BytesMap)
-import Cardano.Address as Address exposing (Credential(..), CredentialHash, NetworkId(..), StakeAddress, decodeCredential)
+import Cardano.Address as Address exposing (Credential, CredentialHash, NetworkId(..), StakeAddress, decodeCredential)
 import Cardano.AuxiliaryData as AuxiliaryData exposing (AuxiliaryData)
 import Cardano.Data as Data exposing (Data)
 import Cardano.Gov as Gov exposing (ActionId, Anchor, CostModels, Drep, ProposalProcedure, ProtocolParamUpdate, Voter, VotingProcedure)
@@ -56,7 +56,6 @@ import Cardano.Redeemer as Redeemer exposing (ExUnitPrices, Redeemer)
 import Cardano.Script as Script exposing (NativeScript, Script, ScriptCbor)
 import Cardano.Utils exposing (RationalNumber)
 import Cardano.Utxo as Utxo exposing (Output, OutputReference, TransactionId, encodeOutput, encodeOutputReference)
-import Cardano.Value as Value
 import Cbor.Decode as D
 import Cbor.Decode.Extra as D
 import Cbor.Encode as E
@@ -498,18 +497,8 @@ estimateRefScriptFeeSavings script =
         refScriptOutputRef =
             { transactionId = Bytes.dummy 32 "", outputIndex = 0 }
 
-        dummyCred =
-            Bytes.dummy 28 ""
-
         refScript =
             Script.refFromScript script
-
-        refScriptOutput =
-            { address = Address.base Testnet (VKeyHash dummyCred) (VKeyHash dummyCred)
-            , amount = Value.onlyLovelace <| Natural.fromSafeInt 2000000
-            , datumOption = Nothing
-            , referenceScript = Just refScript
-            }
 
         txWithRefScript =
             { new | body = { newBody | referenceInputs = [ refScriptOutputRef ] } }

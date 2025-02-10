@@ -4,6 +4,7 @@ module Bytes.Comparable exposing
     , concat, chunksOf, width, isEmpty
     , fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
     , toBytes, toHex, toText, toCbor, toU8
+    , jsonEncode, jsonDecoder
     , blake2b224, blake2b256, blake2b512
     , dummy, dummyWithPrefix, pretty
     )
@@ -19,6 +20,7 @@ module Bytes.Comparable exposing
 @docs concat, chunksOf, width, isEmpty
 @docs fromBytes, fromHex, fromHexUnchecked, fromText, fromU8
 @docs toBytes, toHex, toText, toCbor, toU8
+@docs jsonEncode, jsonDecoder
 @docs blake2b224, blake2b256, blake2b512
 @docs dummy, dummyWithPrefix, pretty
 
@@ -30,6 +32,8 @@ import Bytes.Decode as D
 import Bytes.Encode as E
 import Cbor.Encode as Cbor
 import Hex.Convert as Hex
+import Json.Decode as JD
+import Json.Encode as JE
 
 
 {-| A custom `Bytes` type that is comparable with `==`.
@@ -131,6 +135,26 @@ toBytes (Bytes str) =
 toCbor : Bytes a -> Cbor.Encoder
 toCbor =
     toBytes >> Cbor.bytes
+
+
+{-| JSON decoder for Bytes.
+-}
+jsonDecoder : JD.Decoder (Bytes a)
+jsonDecoder =
+    JD.string
+        |> JD.andThen
+            (\hex ->
+                fromHex hex
+                    |> Maybe.map JD.succeed
+                    |> Maybe.withDefault (JD.fail <| "Failed to decode Bytes: " ++ hex)
+            )
+
+
+{-| JSON encoder for Bytes.
+-}
+jsonEncode : Bytes a -> JE.Value
+jsonEncode (Bytes hex) =
+    JE.string hex
 
 
 absurd : Bytes.Bytes

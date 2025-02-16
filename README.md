@@ -76,11 +76,10 @@ in the different documents in the `docs/` dir of the repo.
 ## Contributions
 
 Contributions are very welcomed! For now things are moving fast so I suggest
-discussing first over [TxPipe discord][txpipe-discord], in the
+discussing first over in the
 [#elm][elm-cardano-channel] channel.
 
-[txpipe-discord]: https://discord.gg/ZTHcHUy5HY
-[elm-cardano-channel]: https://discord.com/channels/946071061567529010/1168602442657697793
+[elm-cardano-channel]: https://discord.gg/UgXYyy9dHg
 
 The elm-cardano cli is built using the rust language.
 To build successfully, it attempts to statically load the WASM files for Aiken UPLC virtual machine.

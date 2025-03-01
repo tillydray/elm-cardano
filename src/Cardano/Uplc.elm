@@ -1,5 +1,6 @@
 module Cardano.Uplc exposing
     ( evalScriptsCosts, evalScriptsCostsRaw
+    , applyParamsToScript
     , VmConfig, defaultVmConfig, conwayDefaultBudget, conwayDefaultCostModels
     , SlotConfig, slotConfigMainnet, slotConfigPreview, slotConfigPreprod
     )
@@ -8,6 +9,8 @@ module Cardano.Uplc exposing
 
 @docs evalScriptsCosts, evalScriptsCostsRaw
 
+@docs applyParamsToScript
+
 @docs VmConfig, defaultVmConfig, conwayDefaultBudget, conwayDefaultCostModels
 
 @docs SlotConfig, slotConfigMainnet, slotConfigPreview, slotConfigPreprod
@@ -15,8 +18,11 @@ module Cardano.Uplc exposing
 -}
 
 import Bytes.Comparable as Bytes exposing (Bytes)
+import Cardano.Address exposing (CredentialHash)
+import Cardano.Data as Data exposing (Data)
 import Cardano.Gov as Gov exposing (CostModels)
 import Cardano.Redeemer as Redeemer exposing (ExUnits, Redeemer)
+import Cardano.Script as Script exposing (PlutusScript, Script(..))
 import Cardano.Transaction as Transaction exposing (Transaction)
 import Cardano.Utxo as Utxo exposing (Output)
 import Cbor.Decode as CD
@@ -58,7 +64,10 @@ evalScriptsCosts vmConfig localStateUtxos tx =
             |> Err
 
     else
-        evalScriptsCostsRaw vmConfig (Dict.Any.filterMap (\_ -> identity) usedUtxos) (Transaction.serialize tx)
+        evalScriptsCostsRaw
+            vmConfig
+            (Dict.Any.filterMap (\_ -> identity) usedUtxos)
+            (Transaction.serialize tx)
 
 
 {-| Evaluate plutus scripts costs with the Tx raw bytes.
@@ -72,22 +81,15 @@ More info on that in the `README` of the [elm-cardano GitHub repo](https://githu
 evalScriptsCostsRaw : VmConfig -> Utxo.RefDict Output -> Bytes any -> Result String (List Redeemer)
 evalScriptsCostsRaw vmConfig usedUtxos txBytes =
     let
-        jsEncode : (a -> CE.Encoder) -> a -> JE.Value
-        jsEncode cborEncoder v =
-            CE.encode (cborEncoder v)
-                |> Bytes.fromBytes
-                |> Bytes.toHex
-                |> JE.string
-
         ( refs, outputs ) =
             ( Dict.Any.keys usedUtxos, Dict.Any.values usedUtxos )
 
         jsArguments =
             JE.object
                 [ ( "tx_bytes", JE.string <| Bytes.toHex txBytes )
-                , ( "utxos_refs_bytes", JE.list (jsEncode Utxo.encodeOutputReference) refs )
-                , ( "utxos_outputs_bytes", JE.list (jsEncode Utxo.encodeOutput) outputs )
-                , ( "cost_mdls_bytes", jsEncode Gov.encodeCostModels vmConfig.costModels )
+                , ( "utxos_refs_bytes", JE.list (jsEncodeHelper Utxo.encodeOutputReference) refs )
+                , ( "utxos_outputs_bytes", JE.list (jsEncodeHelper Utxo.encodeOutput) outputs )
+                , ( "cost_mdls_bytes", jsEncodeHelper Gov.encodeCostModels vmConfig.costModels )
                 , ( "cpu_budget", JE.int vmConfig.budget.steps )
                 , ( "mem_budget", JE.int vmConfig.budget.mem )
                 , ( "slot_config_zero_time", JE.int (Natural.toInt vmConfig.slotConfig.zeroTime) )
@@ -108,11 +110,61 @@ evalScriptsCostsRaw vmConfig usedUtxos txBytes =
         |> Result.map (List.filterMap decodeRedeemer)
 
 
+{-| Apply a list of [Data] encode parameters to a given [PlutusScript].
+
+Similar to [evalScriptsCostsRaw], This function will call Aiken UPLC VM with
+some JavaScript and WebAssembly code.
+It requires customized Elm compilation and JS code patching,
+so you need to call the `elm-cardano` binary for compilation.
+More info on that in the `README` of the [elm-cardano GitHub repo](https://github.com/elm-cardano/elm-cardano).
+
+-}
+applyParamsToScript : List Data -> PlutusScript -> Result String { plutusScript : PlutusScript, hash : Bytes CredentialHash }
+applyParamsToScript params script =
+    let
+        jsArguments =
+            JE.object
+                [ ( "params", jsEncodeHelper (CE.list Data.toCborUplc) params )
+                , ( "script", JE.string <| Bytes.toHex script.script )
+                ]
+
+        decodeAppliedScript : String -> Maybe { plutusScript : PlutusScript, hash : Bytes CredentialHash }
+        decodeAppliedScript appliedScriptHex =
+            let
+                header =
+                    String.slice 0 2 appliedScriptHex
+
+                flat =
+                    if header == "58" then
+                        String.dropLeft 4 appliedScriptHex
+
+                    else
+                        String.dropLeft 6 appliedScriptHex
+
+                mScriptHash =
+                    Bytes.fromHex flat |> Maybe.map (\flatBytes -> Script.hash <| Plutus { script | script = flatBytes })
+            in
+            Maybe.map2
+                (\scriptBytes scriptHash -> { plutusScript = { script | script = scriptBytes }, hash = scriptHash })
+                (Bytes.fromHex appliedScriptHex)
+                mScriptHash
+    in
+    applyParamsToScriptKernel jsArguments
+        |> Result.andThen (decodeAppliedScript >> Result.fromMaybe "Failed to decode the applied script.")
+
+
 {-| Kernel function (needs patching by elm-cardano) to run phase 2 evaluation (WASM code).
 -}
 evalScriptsCostsKernel : JE.Value -> Result String (List String)
 evalScriptsCostsKernel _ =
     Err "To build a Tx containing scripts, you need to use the elm-cardano binary instead of directly the elm binary. Details are in the elm-cardano GitHub repo."
+
+
+{-| Kernel function (needs patching by elm-cardano) to run parameter application (WASM code).
+-}
+applyParamsToScriptKernel : JE.Value -> Result String String
+applyParamsToScriptKernel _ =
+    Err "To apply parameters to a script, you need to use the elm-cardano binary instead of directly the elm binary. Details are in the elm-cardano GitHub repo."
 
 
 {-| UPLC VM configuration.
@@ -126,6 +178,14 @@ type alias VmConfig =
     , slotConfig : SlotConfig
     , costModels : CostModels
     }
+
+
+jsEncodeHelper : (a -> CE.Encoder) -> a -> JE.Value
+jsEncodeHelper cborEncoder v =
+    CE.encode (cborEncoder v)
+        |> Bytes.fromBytes
+        |> Bytes.toHex
+        |> JE.string
 
 
 {-| Default UPLC VM config.

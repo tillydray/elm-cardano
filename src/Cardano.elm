@@ -63,7 +63,9 @@ Here is a simple way to send 1 Ada to someone else.
         Utxo.refDictFromList myUtxos
 
     sendOneAdaToSomeoneTx =
-        [ Spend (FromWallet me oneAda), SendTo someone oneAda ]
+        [ Spend (FromWallet { address = me, value = oneAda, guaranteedUtxos = [] })
+        , SendTo someone oneAda
+        ]
             |> finalize localStateUtxos []
 
 The finalization step validates the Tx, compute the fees and add other required fields.
@@ -78,8 +80,8 @@ Here is an example where me and you both contribute 1 Ada.
         Utxo.refDictFromList (myUtxos ++ yourUtxos)
 
     bothSendOneAdaToSomeoneTx =
-        [ Spend (FromWallet me oneAda)
-        , Spend (FromWallet you oneAda)
+        [ Spend (FromWallet { address = me, value = oneAda, guaranteedUtxos = [] })
+        , Spend (FromWallet { address = you, value = oneAda, guaranteedUtxos = [] })
         , SendTo someone twoAda
         ]
             |> finalize localStateUtxos []
@@ -106,7 +108,12 @@ To mint or burn via a native script, here is what we can do.
         , SendTo me (Value.onlyToken dogPolicyId dogAssetName Natural.one)
 
         -- burning 1 cat
-        , Spend <| FromWallet me (Value.onlyToken catPolicyId catAssetName Natural.one)
+        , Spend <|
+            FromWallet
+                { address = me
+                , value = Value.onlyToken catPolicyId catAssetName Natural.one
+                , guaranteedUtxos = []
+                }
         , MintBurn
             { policyId = catPolicyId
             , assets = Map.singleton catAssetName Integer.negativeOne
@@ -146,7 +153,9 @@ that can only be retrieved with our signature.
         Utxo.refDictFromList myUtxos
 
     nativeLockTx =
-        [ Spend (FromWallet me twoAda), SendTo scriptAddress twoAda ]
+        [ Spend (FromWallet { address = me, value = twoAda, guaranteedUtxos = [] })
+        , SendTo scriptAddress twoAda
+        ]
             |> finalize localStateUtxos []
 
 As you can see, we could even keep our stake credential
@@ -241,7 +250,12 @@ of the smallest size possible since a redeemer is mandatory.
         , SendTo me (Value.onlyToken dogPolicyId dogAssetName Natural.one)
 
         -- burning 1 cat
-        , Spend <| FromWallet me (Value.onlyToken catPolicyId catAssetName Natural.one)
+        , Spend <|
+            FromWallet
+                { address = me
+                , value = Value.onlyToken catPolicyId catAssetName Natural.one
+                , guaranteedUtxos = []
+                }
         , MintBurn
             { policyId = catPolicyId
             , assets = Map.singleton catAssetName Integer.negativeOne
@@ -296,7 +310,7 @@ when some future transaction try to spend that UTxO later.
         Utxo.refDictFromList (myUtxos ++ scriptsRefsUtxos)
 
     lockInPlutusScriptTx =
-        [ Spend (FromWallet me fourAda)
+        [ Spend (FromWallet { address = me, value = fourAda, guaranteedUtxos = [] })
         , SendToOutput
             { address = scriptAddress
             , amount = fourAda
@@ -429,11 +443,11 @@ TODO: check that output references match the type of source (script VS not scrip
 
 -}
 type SpendSource
-    = FromWallet Address Value
-      -- (Maybe) Eventually improve "From Address Value"" with variants like:
-      -- FromAnywhere Value
-      -- FromPaymentKey (Bytes CredentialHash)
-    | FromWalletUtxo OutputReference
+    = FromWallet
+        { address : Address
+        , value : Value
+        , guaranteedUtxos : List OutputReference
+        }
     | FromNativeScript
         { spentInput : OutputReference
         , nativeScriptWitness : WitnessSource NativeScript
@@ -672,7 +686,7 @@ finalize :
     -> Result TxFinalizationError TxFinalized
 finalize localStateUtxos txOtherInfo txIntents =
     assertNoGovProposals txIntents
-        |> Result.andThen (\_ -> guessFeeSource localStateUtxos txIntents)
+        |> Result.andThen (\_ -> guessFeeSource txIntents)
         |> Result.andThen
             (\feeSource ->
                 let
@@ -744,7 +758,6 @@ It will use an address coming from either of these below options,
 in the preference order of that list:
 
   - an address coming from a `From address value` spend source
-  - an address coming from a `FromWalletUtxo ref` input spend source
   - an address coming from a `SendTo address value` destination
 
 If none of these are present, this will return an `UnableToGuessFeeSource` error.
@@ -752,35 +765,19 @@ If a wallet UTxO reference is found but not present in the local state UTxOs,
 this will return a `ReferenceOutputsMissingFromLocalState` error.
 
 -}
-guessFeeSource : Utxo.RefDict Output -> List TxIntent -> Result TxFinalizationError Address
-guessFeeSource localStateUtxos txIntents =
+guessFeeSource : List TxIntent -> Result TxFinalizationError Address
+guessFeeSource txIntents =
     let
         findFromAddress intents =
             case intents of
                 [] ->
                     Nothing
 
-                (Spend (FromWallet address _)) :: _ ->
+                (Spend (FromWallet { address })) :: _ ->
                     Just address
 
                 _ :: rest ->
                     findFromAddress rest
-
-        findFromWalletUtxo intents =
-            case intents of
-                [] ->
-                    Ok Nothing
-
-                (Spend (FromWalletUtxo ref)) :: _ ->
-                    case Dict.Any.get ref localStateUtxos of
-                        Just { address } ->
-                            Ok (Just address)
-
-                        Nothing ->
-                            Err (ReferenceOutputsMissingFromLocalState [ ref ])
-
-                _ :: rest ->
-                    findFromWalletUtxo rest
 
         findSendTo intents =
             case intents of
@@ -798,20 +795,12 @@ guessFeeSource localStateUtxos txIntents =
             Ok address
 
         Nothing ->
-            case findFromWalletUtxo txIntents of
-                Err err ->
-                    Err err
-
-                Ok (Just address) ->
+            case findSendTo txIntents of
+                Just address ->
                     Ok address
 
-                Ok Nothing ->
-                    case findSendTo txIntents of
-                        Just address ->
-                            Ok address
-
-                        Nothing ->
-                            Err UnableToGuessFeeSource
+                Nothing ->
+                    Err UnableToGuessFeeSource
 
 
 {-| Helper function to detect the presence of Plutus scripts in the transaction.
@@ -831,10 +820,7 @@ containPlutusScripts txIntents =
         (SendToOutputAdvanced _) :: otherIntents ->
             containPlutusScripts otherIntents
 
-        (Spend (FromWallet _ _)) :: otherIntents ->
-            containPlutusScripts otherIntents
-
-        (Spend (FromWalletUtxo _)) :: otherIntents ->
+        (Spend (FromWallet _)) :: otherIntents ->
             containPlutusScripts otherIntents
 
         (Spend (FromNativeScript _)) :: otherIntents ->
@@ -1178,6 +1164,7 @@ computeRefScriptBytes localStateUtxos references =
 type alias PreProcessedIntents =
     { freeInputs : Address.Dict Value
     , freeOutputs : Address.Dict Value
+    , guaranteedUtxos : List OutputReference
     , preSelected : List { input : OutputReference, redeemer : Maybe (InputsOutputs -> Data) }
     , preCreated : InputsOutputs -> { sum : Value, outputs : List Output }
     , nativeScriptSources : List (WitnessSource NativeScript)
@@ -1199,6 +1186,7 @@ noIntent : PreProcessedIntents
 noIntent =
     { freeInputs = Address.emptyDict
     , freeOutputs = Address.emptyDict
+    , guaranteedUtxos = []
     , preSelected = []
     , preCreated = \_ -> { sum = Value.zero, outputs = [] }
     , nativeScriptSources = []
@@ -1268,13 +1256,11 @@ preProcessIntents txIntents =
                     in
                     { preProcessedIntents | preCreated = newPreCreated }
 
-                Spend (FromWallet addr v) ->
+                Spend (FromWallet { address, value, guaranteedUtxos }) ->
                     { preProcessedIntents
-                        | freeInputs = freeValueAdd addr v preProcessedIntents.freeInputs
+                        | freeInputs = freeValueAdd address value preProcessedIntents.freeInputs
+                        , guaranteedUtxos = guaranteedUtxos ++ preProcessedIntents.guaranteedUtxos
                     }
-
-                Spend (FromWalletUtxo ref) ->
-                    { preProcessedIntents | preSelected = { input = ref, redeemer = Nothing } :: preProcessedIntents.preSelected }
 
                 Spend (FromNativeScript { spentInput, nativeScriptWitness }) ->
                     { preProcessedIntents
@@ -1508,6 +1494,7 @@ preprocessCert certWithKeyF certWithScriptF { deposit, refund } cred preProcesse
 type alias ProcessedIntents =
     { freeInputs : Address.Dict Value
     , freeOutputs : Address.Dict Value
+    , guaranteedUtxos : Address.Dict (List OutputReference)
     , preSelected : { sum : Value, inputs : Utxo.RefDict (Maybe (InputsOutputs -> Data)) }
     , preCreated : InputsOutputs -> { sum : Value, outputs : List Output }
     , nativeScriptSources : List (WitnessSource NativeScript)
@@ -1569,6 +1556,7 @@ processIntents govState localStateUtxos txIntents =
         allOutputReferencesInIntents =
             List.concat
                 [ List.map .input preProcessedIntents.preSelected
+                , preProcessedIntents.guaranteedUtxos
                 , List.filterMap extractWitnessRef preProcessedIntents.nativeScriptSources
                 , List.map (\( _, source ) -> source) plutusScriptSources
                     |> List.filterMap extractWitnessRef
@@ -1654,6 +1642,25 @@ processIntents govState localStateUtxos txIntents =
                 List.map (\m -> Map.singleton m.policyId m.assets) preProcessedIntents.mints
                     |> List.foldl MultiAsset.mintAdd MultiAsset.empty
                     |> MultiAsset.normalize Integer.isZero
+
+            guaranteedUtxos : Address.Dict (List OutputReference)
+            guaranteedUtxos =
+                preProcessedIntents.guaranteedUtxos
+                    |> List.foldl
+                        (\ref acc ->
+                            Dict.Any.get ref localStateUtxos
+                                |> Maybe.map
+                                    (\{ address } ->
+                                        case Dict.Any.get address acc of
+                                            Nothing ->
+                                                Dict.Any.insert address [ ref ] acc
+
+                                            Just refs ->
+                                                Dict.Any.insert address (ref :: refs) acc
+                                    )
+                                |> Maybe.withDefault acc
+                        )
+                        Address.emptyDict
         in
         validMinAdaPerOutput preCreatedOutputs.outputs
             |> Result.mapError NotEnoughMinAda
@@ -1676,6 +1683,7 @@ processIntents govState localStateUtxos txIntents =
                     in
                     { freeInputs = preProcessedIntents.freeInputs
                     , freeOutputs = preProcessedIntents.freeOutputs
+                    , guaranteedUtxos = guaranteedUtxos
                     , preSelected = preSelected
                     , preCreated = preCreated
 
@@ -2199,10 +2207,15 @@ computeCoinSelection localStateUtxos fee processedIntents coinSelectionAlgo =
                             coinSelectIter targetValue alreadySelected =
                                 coinSelectionAlgo maxInputCount (context targetValue alreadySelected)
                                     |> Result.andThen makeChangeOutput
+
+                            guaranteedSelected =
+                                Dict.Any.get addr processedIntents.guaranteedUtxos
+                                    |> Maybe.withDefault []
+                                    |> List.filterMap (\ref -> Dict.Any.get ref localStateUtxos |> Maybe.map (\output -> ( ref, output )))
                         in
                         -- Try coin selection up to 2 times if the only missing value is Ada.
                         -- Why 2 times? because the first time, it might be missing minAda for the change output.
-                        case coinSelectIter targetInputValue [] of
+                        case coinSelectIter targetInputValue guaranteedSelected of
                             (Err (CoinSelection.UTxOBalanceInsufficient err1)) as err ->
                                 if MultiAsset.isEmpty err1.missingValue.assets then
                                     coinSelectIter (Value.add targetInputValue err1.missingValue) err1.selectedUtxos

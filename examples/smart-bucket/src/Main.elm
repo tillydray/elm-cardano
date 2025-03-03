@@ -336,7 +336,7 @@ update msg model =
                                 }
                             }
                         )
-                    , Spend <| FromWallet ctx.loadedWallet.changeAddress bucketValueIncrease
+                    , Spend <| FromWallet { address = ctx.loadedWallet.changeAddress, value = bucketValueIncrease, guaranteedUtxos = [] }
                     , SendToOutputAdvanced outputBucket
                     ]
                         |> Cardano.finalize ctx.localStateUtxos []
@@ -373,7 +373,7 @@ createBucket ({ localStateUtxos, myKeyCred, scriptAddress, loadedWallet, lockScr
 
         -- Transaction locking 2 Ada in a "bucket" UTxO at the script address
         createBucketTxAttempt =
-            [ Spend (FromWallet loadedWallet.changeAddress twoAda)
+            [ Spend <| FromWallet { address = ctx.loadedWallet.changeAddress, value = twoAda, guaranteedUtxos = [] }
             , SendToOutput
                 { address = scriptAddress
                 , amount = twoAda

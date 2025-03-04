@@ -40,7 +40,7 @@ struct MakeSubCommand {
     output: String,
 
     #[argh(option)]
-    /// specify a format for compiler messages: "normal" or "json"
+    /// specify "--report json" to get error messages as JSON
     report: Option<String>,
 
     #[argh(switch)]

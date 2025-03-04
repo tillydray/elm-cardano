@@ -159,7 +159,9 @@ fn make_subcommand(make_args: MakeSubCommand) -> anyhow::Result<()> {
     // Execute the command and stream output
     let status = cmd.status().context("Failed to execute elm make command")?;
     if !status.success() {
-        anyhow::bail!("Compilation failed!")
+        // The elm compiler failed, let’s just exit without any additional info
+        // to not mess with potential json --report going to stderr.
+        std::process::exit(status.code().unwrap_or(1));
     }
 
     // Read the elm compiled file

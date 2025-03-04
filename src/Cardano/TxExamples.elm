@@ -100,7 +100,7 @@ globalStateUtxos =
 
 
 example1 _ =
-    [ Spend <| FromWallet exAddr.me ada.one
+    [ Spend <| FromWallet { address = exAddr.me, value = ada.one, guaranteedUtxos = [] }
     , SendTo exAddr.you ada.one
     ]
         |> finalize globalStateUtxos [ TxMetadata { tag = Natural.fromSafeInt 14, metadata = Metadatum.Int (Integer.fromSafeInt 42) } ]
@@ -120,7 +120,12 @@ example2 _ =
     , SendTo exAddr.me (Value.onlyToken dog.policyId dog.assetName Natural.one)
 
     -- burning 1 cat
-    , Spend <| FromWallet exAddr.me (Value.onlyToken cat.policyId cat.assetName Natural.one)
+    , Spend <|
+        FromWallet
+            { address = exAddr.me
+            , value = Value.onlyToken cat.policyId cat.assetName Natural.one
+            , guaranteedUtxos = []
+            }
     , MintBurn
         { policyId = cat.policyId
         , assets = Map.singleton cat.assetName Integer.negativeOne
@@ -224,7 +229,7 @@ example4 _ =
             Address.extractStakeKeyHash exAddr.me
                 |> Maybe.withDefault (dummyCredentialHash "ERROR")
     in
-    [ Spend <| FromWallet exAddr.me ada.two -- 2 ada for the registration deposit
+    [ Spend <| FromWallet { address = exAddr.me, value = ada.two, guaranteedUtxos = [] }
     , IssueCertificate <| RegisterStake { delegator = WithKey myStakeKeyHash, deposit = Natural.fromSafeInt 2000000 }
     , IssueCertificate <| DelegateStake { delegator = WithKey myStakeKeyHash, poolId = Bytes.dummy 28 "poolId" }
     , IssueCertificate <| DelegateVotes { delegator = WithKey myStakeKeyHash, drep = VKeyHash <| dummyCredentialHash "drep" }
@@ -291,7 +296,12 @@ example5 _ =
                 }
     in
     [ -- 600K deposit for all the gov actions
-      Spend <| FromWallet exAddr.me <| Value.onlyLovelace (Natural.mul Natural.six ada100K)
+      Spend <|
+        FromWallet
+            { address = exAddr.me
+            , value = Value.onlyLovelace (Natural.mul Natural.six ada100K)
+            , guaranteedUtxos = []
+            }
 
     -- Change minPoolCost to 0
     , propose

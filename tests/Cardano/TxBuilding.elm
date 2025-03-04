@@ -99,7 +99,7 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me (Value.onlyLovelace <| ada 1)
+                [ Spend <| FromWallet { address = testAddr.me, value = Value.onlyLovelace <| ada 1, guaranteedUtxos = [] }
                 , SendTo testAddr.me (Value.onlyLovelace <| ada 1)
                 ]
             }
@@ -123,7 +123,7 @@ okTxBuilding =
                         Utxo.refDictFromList [ makeAdaOutput 0 testAddr.me 5 ]
 
                     txIntents =
-                        [ Spend <| FromWallet testAddr.me (Value.onlyLovelace <| ada 1)
+                        [ Spend <| FromWallet { address = testAddr.me, value = Value.onlyLovelace <| ada 1, guaranteedUtxos = [] }
                         , SendTo testAddr.me (Value.onlyLovelace <| ada 1)
                         ]
                 in
@@ -135,7 +135,7 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me (Value.onlyLovelace <| ada 1)
+                [ Spend <| FromWallet { address = testAddr.me, value = Value.onlyLovelace <| ada 1, guaranteedUtxos = [] }
                 , SendTo testAddr.you (Value.onlyLovelace <| ada 1)
                 ]
             }
@@ -165,7 +165,7 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.you (Value.onlyLovelace <| ada 1)
+                [ Spend <| FromWallet { address = testAddr.you, value = Value.onlyLovelace <| ada 1, guaranteedUtxos = [] }
                 , SendTo testAddr.me (Value.onlyLovelace <| ada 1)
                 ]
             }
@@ -205,7 +205,7 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me threeCatTwoAda
+                [ Spend <| FromWallet { address = testAddr.me, value = threeCatTwoAda, guaranteedUtxos = [] }
                 , SendTo testAddr.you threeCatTwoAda
                 ]
             }
@@ -245,7 +245,7 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me threeCatMinAda
+                [ Spend <| FromWallet { address = testAddr.me, value = threeCatMinAda, guaranteedUtxos = [] }
                 , SendTo testAddr.you threeCatMinAda
                 ]
             }
@@ -286,7 +286,12 @@ okTxBuilding =
                 , SendTo testAddr.me (Value.onlyToken dog.policyId dog.assetName Natural.one)
 
                 -- burning 1 cat
-                , Spend <| FromWallet testAddr.me (Value.onlyToken cat.policyId cat.assetName Natural.one)
+                , Spend <|
+                    FromWallet
+                        { address = testAddr.me
+                        , value = Value.onlyToken cat.policyId cat.assetName Natural.one
+                        , guaranteedUtxos = []
+                        }
                 , MintBurn
                     { policyId = cat.policyId
                     , assets = Map.singleton cat.assetName Integer.negativeOne
@@ -455,7 +460,12 @@ okTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me <| Value.onlyLovelace (ada 2) -- 2 ada for the registration deposit
+                [ Spend <|
+                    FromWallet
+                        { address = testAddr.me
+                        , value = Value.onlyLovelace (ada 2) -- 2 ada for the registration deposit
+                        , guaranteedUtxos = []
+                        }
                 , IssueCertificate <| RegisterStake { delegator = WithKey myStakeKeyHash, deposit = ada 2 }
                 , IssueCertificate <| DelegateStake { delegator = WithKey myStakeKeyHash, poolId = Bytes.dummy 28 "poolId" }
                 , IssueCertificate <| DelegateVotes { delegator = WithKey myStakeKeyHash, drep = VKeyHash <| dummyCredentialHash "drep" }
@@ -540,7 +550,12 @@ okTxBuilding =
             , txOtherInfo = []
             , txIntents =
                 [ -- 600K deposit for all the gov actions
-                  Spend <| FromWallet testAddr.me <| Value.onlyLovelace (Natural.mul Natural.six ada100K)
+                  Spend <|
+                    FromWallet
+                        { address = testAddr.me
+                        , value = Value.onlyLovelace (Natural.mul Natural.six ada100K)
+                        , guaranteedUtxos = []
+                        }
 
                 -- Change minPoolCost to 0
                 , propose
@@ -808,7 +823,12 @@ failTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWalletUtxo (makeRef "0" 0)
+                [ Spend <|
+                    FromWallet
+                        { address = testAddr.me
+                        , value = Value.onlyLovelace <| ada 1
+                        , guaranteedUtxos = [ makeRef "0" 0 ] -- Non-existent UTxO
+                        }
                 , SendTo testAddr.me (Value.onlyLovelace <| ada 1)
                 ]
             }
@@ -826,7 +846,7 @@ failTxBuilding =
             , evalScriptsCosts = \_ _ -> Ok []
             , fee = twoAdaFee
             , txOtherInfo = []
-            , txIntents = [ Spend <| FromWallet testAddr.me (Value.onlyLovelace <| ada 1) ]
+            , txIntents = [ Spend <| FromWallet { address = testAddr.me, value = Value.onlyLovelace <| ada 1, guaranteedUtxos = [] } ]
             }
             (\error ->
                 case error of
@@ -859,7 +879,7 @@ failTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me (Value.onlyLovelace <| Natural.fromSafeInt 100)
+                [ Spend <| FromWallet { address = testAddr.me, value = Value.onlyLovelace <| Natural.fromSafeInt 100, guaranteedUtxos = [] }
                 , SendToOutput (Utxo.fromLovelace testAddr.me <| Natural.fromSafeInt 100)
                 ]
             }
@@ -881,7 +901,12 @@ failTxBuilding =
             , fee = twoAdaFee
             , txOtherInfo = []
             , txIntents =
-                [ Spend <| FromWallet testAddr.me (Value.onlyToken cat.policyId cat.assetName Natural.three)
+                [ Spend <|
+                    FromWallet
+                        { address = testAddr.me
+                        , value = Value.onlyToken cat.policyId cat.assetName Natural.three
+                        , guaranteedUtxos = []
+                        }
                 , SendTo testAddr.you (Value.onlyToken cat.policyId cat.assetName Natural.three)
                 ]
             }

@@ -333,9 +333,13 @@ update msg model =
 
         ( UnlockAdaButtonClicked, TxSubmitted ctx _ { txId } ) ->
             let
+                ( burnIntent, burnValue ) =
+                    makeMintBurnIntent ctx.lockScript ctx.tokenName False
+
                 intents =
-                    [ Spend
-                        (FromPlutusScript
+                    -- collect the gift ada
+                    [ Spend <|
+                        FromPlutusScript
                             -- The gift UTxO was the first output of the locking tx
                             { spentInput = OutputReference txId 0
                             , datumWitness = Nothing
@@ -345,19 +349,16 @@ update msg model =
                                 , requiredSigners = []
                                 }
                             }
-                        )
-                    , Spend
-                        (FromWallet
-                            ctx.loadedWallet.changeAddress
-                            (Cardano.Value.onlyToken ctx.lockScript.hash ctx.tokenName Natural.one)
-                        )
-                    , makeMintBurnIntent ctx.lockScript ctx.tokenName False |> Tuple.first
-                    , SendToOutput
-                        { address = ctx.loadedWallet.changeAddress
-                        , amount = gift
-                        , datumOption = Nothing
-                        , referenceScript = Nothing
-                        }
+                    , SendTo ctx.loadedWallet.changeAddress gift
+
+                    -- Burn the NFT gift card
+                    , Spend <|
+                        FromWallet
+                            { address = ctx.loadedWallet.changeAddress
+                            , value = burnValue
+                            , guaranteedUtxos = []
+                            }
+                    , burnIntent
                     ]
             in
             intents |> finalizeTx ctx (Just txId)
@@ -377,34 +378,32 @@ lock ({ loadedWallet, scriptAddress, lockScript, pickedUtxo, tokenName } as ctx)
         ( mintIntent, mintValue ) =
             makeMintBurnIntent lockScript tokenName True
 
-        nftWithPickedUtxoChange =
-            Cardano.Value.sum
-                [ ctx.localStateUtxos
-                    |> Dict.Any.get pickedUtxo
-                    |> Maybe.map .amount
-                    |> Maybe.withDefault Cardano.Value.zero
-                , mintValue
-                ]
-
-        -- Transaction locking 2 ada, plus the minted NFT at connected wallet's
-        -- address, and locking 10 ada at the script address.
+        -- Transaction locking a 10 ada gift at the script address,
+        -- and minting an NFT at the wallet address.
         intents =
-            [ Spend (FromWalletUtxo pickedUtxo)
-            , Spend
-                (FromWallet
-                    loadedWallet.changeAddress
-                    gift
-                )
-            , mintIntent
+            -- Lock the gift ada in the contract
+            [ Spend <|
+                FromWallet
+                    { address = loadedWallet.changeAddress
+                    , value = gift
+
+                    -- Also guarantee that the required UTxO is spent
+                    , guaranteedUtxos = [ pickedUtxo ]
+                    }
+
+            -- Using "SendToOutput" instead of "SendTo" just to make sure
+            -- this will be the first output of the transaction (index 0).
+            -- So that we know which UTxO to spend in the unlocking transaction.
             , SendToOutput
                 { address = scriptAddress
                 , amount = gift
-                , datumOption = Just (DatumValue <| Data.Int Integer.zero)
+                , datumOption = Nothing
                 , referenceScript = Nothing
                 }
-            , SendTo
-                ctx.loadedWallet.changeAddress
-                nftWithPickedUtxoChange
+
+            -- Mint the NFT gift card
+            , mintIntent
+            , SendTo loadedWallet.changeAddress mintValue
             ]
     in
     intents |> finalizeTx ctx Nothing

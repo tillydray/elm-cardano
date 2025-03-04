@@ -7,15 +7,13 @@ import Cardano.Address as Address exposing (Address, Credential(..), CredentialH
 import Cardano.Cip30 as Cip30
 import Cardano.CoinSelection as CoinSelection
 import Cardano.Data as Data
-import Cardano.Gov as Gov exposing (CostModels, Drep(..), Vote(..))
+import Cardano.Gov exposing (CostModels, Drep(..), Vote(..))
 import Cardano.Script exposing (PlutusVersion(..), ScriptCbor)
 import Cardano.Transaction as Transaction exposing (Transaction)
 import Cardano.Uplc as Uplc
 import Cardano.Utxo as Utxo exposing (DatumOption(..), Output, OutputReference, TransactionId)
 import Cardano.Value
-import Cbor.Encode
 import Dict.Any
-import Hex.Convert
 import Html exposing (Html, button, div, text)
 import Html.Attributes exposing (height, src)
 import Html.Events exposing (onClick)
@@ -122,17 +120,6 @@ type ExternalAppResponse
 
 
 
--- Helper
-
-
-encodeCborHex : Cbor.Encode.Encoder -> Value
-encodeCborHex cborEncoder =
-    Cbor.Encode.encode cborEncoder
-        |> Hex.Convert.toString
-        |> JE.string
-
-
-
 -- #########################################################
 -- UPDATE
 -- #########################################################
@@ -175,12 +162,12 @@ update msg model =
                     )
 
                 -- We just received the utxos, let’s ask for the main change address of the wallet
-                ( Ok (Cip30.ApiResponse { walletId } (Cip30.WalletUtxos utxos)), WalletLoading { wallet } ) ->
+                ( Ok (Cip30.ApiResponse _ (Cip30.WalletUtxos utxos)), WalletLoading { wallet } ) ->
                     ( WalletLoading { wallet = wallet, utxos = utxos }
                     , toWallet (Cip30.encodeRequest (Cip30.getChangeAddress wallet))
                     )
 
-                ( Ok (Cip30.ApiResponse { walletId } (Cip30.ChangeAddress address)), WalletLoading { wallet, utxos } ) ->
+                ( Ok (Cip30.ApiResponse _ (Cip30.ChangeAddress address)), WalletLoading { wallet, utxos } ) ->
                     ( WalletLoaded { wallet = wallet, utxos = Utxo.refDictFromList utxos, changeAddress = address } { errors = "" }
                     , Cmd.none
                     )
@@ -198,7 +185,7 @@ update msg model =
                     , toWallet (Cip30.encodeRequest (Cip30.submitTx ctx.loadedWallet.wallet signedTx))
                     )
 
-                ( Ok (Cip30.ApiResponse { walletId } (Cip30.SubmittedTx txId)), Submitting ({ loadedWallet, feeProvider } as ctx) action { tx } ) ->
+                ( Ok (Cip30.ApiResponse _ (Cip30.SubmittedTx txId)), Submitting ({ loadedWallet, feeProvider } as ctx) action { tx } ) ->
                     let
                         -- Update the known UTxOs set after the given Tx is processed
                         { updatedState, spent, created } =
@@ -252,7 +239,7 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        ( ConnectButtonClicked { id }, WalletDiscovered descriptors ) ->
+        ( ConnectButtonClicked { id }, WalletDiscovered _ ) ->
             ( model, toWallet (Cip30.encodeRequest (Cip30.enableWallet { id = id, extensions = [] })) )
 
         ( LoadBlueprintButtonClicked, WalletLoaded _ _ ) ->
@@ -283,7 +270,7 @@ update msg model =
                     -- Handle error as needed
                     ( WalletLoaded w { errors = Debug.toString err }, Cmd.none )
 
-        ( RequestExternalUtxosClicked, BlueprintLoaded w lockScript _ ) ->
+        ( RequestExternalUtxosClicked, BlueprintLoaded _ _ _ ) ->
             ( model
             , toExternalApp (JE.object [ ( "requestType", JE.string "ask-utxos" ) ])
             )
@@ -302,7 +289,7 @@ update msg model =
                     , Cmd.none
                     )
 
-                ( Ok (GotSignature witnesses), FeeProviderSigning ({ loadedWallet } as ctx) { tx, errors } ) ->
+                ( Ok (GotSignature witnesses), FeeProviderSigning ctx { tx } ) ->
                     let
                         txWithFeeWitness =
                             Transaction.updateSignatures (\_ -> Just witnesses) tx
@@ -327,7 +314,7 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        ( LoadProtocolParamsButtonClicked, FeeProviderLoaded w lockScript feeProvider _ ) ->
+        ( LoadProtocolParamsButtonClicked, FeeProviderLoaded _ _ _ _ ) ->
             ( model
             , Http.post
                 { url = "https://preview.koios.rest/api/v1/ogmios"
@@ -357,11 +344,9 @@ update msg model =
         ( SkipRegisterButtonClicked, ProtocolParamsLoaded w lockScript feeProvider protocolParams _ ) ->
             let
                 -- Extract both parts from our wallet address
-                ( myKeyCred, myStakeCred ) =
-                    ( Address.extractPubKeyHash w.changeAddress
+                myKeyCred =
+                    Address.extractPubKeyHash w.changeAddress
                         |> Maybe.withDefault (Bytes.dummy 28 "ERROR")
-                    , Address.extractStakeCredential w.changeAddress
-                    )
 
                 -- Generate the address we will use for governance (with the gov script as stake cred)
                 govAddress =
@@ -387,11 +372,9 @@ update msg model =
         ( RegisterDRepButtonClicked, ProtocolParamsLoaded w lockScript feeProvider protocolParams _ ) ->
             let
                 -- Extract both parts from our wallet address
-                ( myKeyCred, myStakeCred ) =
-                    ( Address.extractPubKeyHash w.changeAddress
+                myKeyCred =
+                    Address.extractPubKeyHash w.changeAddress
                         |> Maybe.withDefault (Bytes.dummy 28 "ERROR")
-                    , Address.extractStakeCredential w.changeAddress
-                    )
 
                 -- Generate the address we will use for governance (with the gov script as stake cred)
                 govAddress =
@@ -420,7 +403,12 @@ update msg model =
 
                 -- Create registration certificate for the script address as DRep
                 regDRepTxAttempt =
-                    [ Spend <| FromWallet w.changeAddress <| Cardano.Value.onlyLovelace spendAmount
+                    [ Spend <|
+                        FromWallet
+                            { address = w.changeAddress
+                            , value = Cardano.Value.onlyLovelace spendAmount
+                            , guaranteedUtxos = []
+                            }
                     , SendTo govAddress <| Cardano.Value.onlyLovelace transferAmount
                     , IssueCertificate <|
                         RegisterDrep

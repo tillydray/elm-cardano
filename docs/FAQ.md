@@ -22,11 +22,15 @@ And since building a Tx is a complex iterative process,
 smart contract evaluation is needed multiple times in a loop.
 Wiring this with ports would be too cumbersome to be worth the effort IMO.
 So the elm-cardano binary instead patches the output of the Elm compiler
-to inject the necessary code to evaluate smart contracts with the WASM UPLC VM.
+to inject the necessary code to evaluate smart contracts with the WASM UPLC VM
+in a pure function `Cardano.Uplc.evalScriptsCosts`.
 
 The elm-cardano binary also automatically adds some JS code to handle CIP-30 wallet interactions.
 And in the future, it will additionally provide new capabilities,
 such as running scripts in the command line.
+
+The elm-cardano binary is rather minimal Rust CLI,
+and you can find its code in the `cli/` directory of this repository.
 
 ## Why isn’t the elm-cardano package published?
 

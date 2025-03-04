@@ -43,13 +43,15 @@ Install the elm-cardano CLI and the Elm package.
 # Install the elm compiler and the elm-cardano CLI
 npm install -g elm elm-cardano
 
-# (Temporary) clone the elm-cardano repo to expose its elm modules
-# This step won’t be necessary when the elm package will be published
-git clone --depth 1 --branch v0.2.0 https://github.com/elm-cardano/elm-cardano.git
-
 # Initialize a template project in the elm-cardano-starter/ folder
 mkdir elm-cardano-starter && cd elm-cardano-starter
 npx elm-cardano init
+git init . && git add . && git commit -m "Initial commit"
+
+# (temporary) Clone the elm-cardano repo (release branch) to expose its elm modules
+# This step won’t be necessary when the elm package will be published
+git submodule add -b release https://github.com/elm-cardano/elm-cardano.git
+git commit -am "Add elm-cardano as a submodule"
 ```
 
 This will generate the following template structure:
@@ -58,6 +60,7 @@ This will generate the following template structure:
 elm.json     # the elm app config
 index.html   # the app web page
 src/Main.elm # the elm app
+elm-cardano/ # the elm-cardano package
 ```
 
 Now you simply need to compile the elm app and start a static server.
